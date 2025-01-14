@@ -1,0 +1,3 @@
+[submodule "vendor/libzbd"]
+	path = vendor/libzbd
+	url = https://github.com/westerndigitalcorporation/libzbd

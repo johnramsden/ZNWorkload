@@ -2,6 +2,27 @@
 
 Test workloads for ZNS
 
+## Setup
+
+Clone repo:
+
+```shell
+git clone https://github.com/johnramsden/ZNWorkload.git --recursive
+```
+
+Compile dependencies:
+
+```shell
+./build-deps.sh
+```
+
+Compile project:
+
+```shell
+meson setup buildDir
+meson compile -C buildDir
+```
+
 ## Testing and Development
 
 Create an emulated ZNS device via `scripts/nullblk-zones.sh` with:
