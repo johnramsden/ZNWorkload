@@ -2,6 +2,22 @@
 
 #include "libzbd/zbd.h"
 #include <fcntl.h>
+#include <stdlib.h>
+#include <inttypes.h>
+
+struct zone_pair {
+    uint32_t zone;
+    uint32_t id;
+};
+
+struct zone_addr_map {
+    uint32_t nr_zones;
+    uint64_t max_zone_chunks;
+    size_t chunk_sz;
+    uint64_t zone_cap;
+    uint32_t ***zone_entries; // multidimensional array of length [nr_zones][max_zone_chunks]
+};
+
 /**
  * https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
  */
@@ -21,11 +37,45 @@ print_zbd_info(struct zbd_info *info) {
     printf("model=%u\n", info->model);
 }
 
-int main(int argc, char **argv) {
+/**
+ * Get zone capacity
+ *
+ * @param[in] fd open zone file descriptor
+ * @param[out] zone_cap zone capacity
+ * @return non-zero on error
+ */
+static int
+zone_cap(int fd, uint64_t *zone_capacity) {
+    off_t ofst = 0;
+    off_t len = 1;
+    struct zbd_zone zone;
+    unsigned int nr_zones;
+    int ret = zbd_report_zones(fd, ofst, len, ZBD_RO_ALL, &zone, &nr_zones);
+    if (ret != 0) {
+        return ret;
+    }
+    *zone_capacity = zone.capacity;
+    return ret;
+}
+
+static int
+init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap) {
+    int ret = 0;
+
+    zam->chunk_sz = chunk_sz;
+    zam->nr_zones = nr_zones;
+    zam->zone_cap = zone_cap;
+    zam->max_zone_chunks = zone_cap / chunk_sz;
+
+    return ret;
+}
+
+int
+main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <DEVICE>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ>\n", argv[0]);
         return -1;
     }
 
@@ -35,6 +85,11 @@ int main(int argc, char **argv) {
     }
 
     char *device = argv[1];
+    char *chunk_sz_str = argv[2];
+
+    size_t chunk_sz = strtoul(chunk_sz_str, NULL, 10);
+
+    printf("Running with configuration:\n\tDevice name: %s\n\tChunk size: %lu\n", device, chunk_sz);
 
     struct zbd_info info;
     int fd = zbd_open(device, O_RDWR, &info);
@@ -43,5 +98,12 @@ int main(int argc, char **argv) {
         return fd;
     }
 
-    print_zbd_info(&info);
+    uint64_t zone_capacity;
+    int ret = zone_cap(fd, &zone_capacity);
+    if (ret != 0) {
+        fprintf(stderr, "Couldn't report zone info\n");
+        return ret;
+    }
+
+    printf("Got zone cap: %" PRIu64 "\n", zone_capacity);
 }
