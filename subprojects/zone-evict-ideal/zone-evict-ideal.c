@@ -4,6 +4,9 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <asm-generic/errno-base.h>
+
+#define DEBUG 1
 
 struct zone_pair {
     uint32_t zone;
@@ -19,9 +22,28 @@ struct zone_addr_map {
 };
 
 /**
- * https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
+ * Uniform rand with limit
+ *
+ * return a random number between 0 and limit inclusive.
+ *
+ * Cite: https://stackoverflow.com/a/2999130
  */
-static void
+int
+rand_lim(int limit) {
+    int divisor = RAND_MAX/(limit+1);
+    int retval;
+
+    do {
+        retval = rand() / divisor;
+    } while (retval > limit);
+
+    return retval;
+}
+
+/**
+ * Cite: https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
+ */
+[[maybe_unused]] static void
 print_zbd_info(struct zbd_info *info) {
     printf("vendor_id=%s\n", info->vendor_id);
     printf("nr_sectors=%llu\n", info->nr_sectors);
@@ -58,6 +80,11 @@ zone_cap(int fd, uint64_t *zone_capacity) {
     return ret;
 }
 
+// static int
+// gen_workload(struct zone_addr_map * zam, uint32_t num) {
+//
+// }
+
 static int
 init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap) {
     int ret = 0;
@@ -66,6 +93,25 @@ init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_s
     zam->nr_zones = nr_zones;
     zam->zone_cap = zone_cap;
     zam->max_zone_chunks = zone_cap / chunk_sz;
+
+    if (DEBUG) {
+        printf("Initialized address map:\n");
+        printf("\tchunk_sz=%lu\n", chunk_sz);
+        printf("\tnr_zones=%u\n", nr_zones);
+        printf("\tzone_cap=%" PRIu64 "\n", zone_cap);
+        printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
+    }
+
+    zam->zone_entries = malloc(nr_zones * sizeof(uint32_t **));
+    if (zam->zone_entries == NULL) {
+        return ENOMEM;
+    }
+    for (size_t i = 0; i < nr_zones; i++) {
+        zam->zone_entries[i] = malloc(zam->max_zone_chunks * sizeof(uint32_t *));
+        if (zam->zone_entries[i] == NULL) {
+            return ENOMEM;
+        }
+    }
 
     return ret;
 }
@@ -105,5 +151,14 @@ main(int argc, char **argv) {
         return ret;
     }
 
-    printf("Got zone cap: %" PRIu64 "\n", zone_capacity);
+    struct zone_addr_map zam;
+    ret = init_zone_addr_map(&zam, info.nr_zones, chunk_sz, zone_capacity);
+    if (ret != 0) {
+        fprintf(stderr, "Failed to initialize zone address map\n");
+        return ret;
+    }
+
+    // free'd implicitly:
+    //    zone_addr_map
+    return 0;
 }
