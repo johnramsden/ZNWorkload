@@ -1,25 +1,43 @@
 #include "zone-evict-ideal.h"
 
+#include <assert.h>
+
 #include "libzbd/zbd.h"
 #include <fcntl.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <errno.h>
 #include <glib.h>
+#include <stdbool.h>
 
 #define DEBUG 1
+#define VERIFY 1
 
-struct zone_pair {
+struct ze_pair {
     uint32_t zone;
-    uint32_t id;
+    uint32_t chunk_offset;
 };
 
-struct zone_addr_map {
+enum ze_zone_state {
+    ZE_ZONE_FREE = 0,
+    ZE_ZONE_FULL = 1,
+    ZE_ZONE_ACTIVE = 2,
+};
+
+struct ze_cache {
+    int fd;
     uint32_t nr_zones;
     uint64_t max_zone_chunks;
     size_t chunk_sz;
     uint64_t zone_cap;
-    GHashTable *zone_map;
+    // Cache
+    GQueue *lru_queue;       // LRU queue for zones
+    GMutex lock;
+    GHashTable *zone_map;    // Map ID to ze_pair (in lru)
+    // Free/active,state lists
+    GQueue *free_list;       // List of free zones
+    GQueue *active_queue;     // List of active zones
+    enum ze_zone_state *zone_state;
 };
 
 /**
@@ -82,14 +100,12 @@ zone_cap(int fd, uint64_t *zone_capacity) {
 }
 
 static int
-gen_workload(struct zone_addr_map * zam, uint32_t num) {
+ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap, int fd) {
+    assert(zam != NULL);
 
-}
-
-static int
-init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap) {
     int ret = 0;
 
+    zam->fd = fd;
     zam->chunk_sz = chunk_sz;
     zam->nr_zones = nr_zones;
     zam->zone_cap = zone_cap;
@@ -104,17 +120,62 @@ init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_s
     }
 
     // Create a hash table with integer keys and values
-    zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, NULL);
+    zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     if (zam->zone_map == NULL) {
-        return -1;
+        return ENOMEM;
     }
-    g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(1), GINT_TO_POINTER(100));
 
-    // Retrieve a value by key
-    int value = GPOINTER_TO_INT(g_hash_table_lookup(zam->zone_map, GINT_TO_POINTER(1)));
-    printf("Value for key %d: %d\n", 1, value);
+    // Init lists:
+
+    // Alloc and set all to FREE
+    zam->zone_state = g_new0(enum ze_zone_state, nr_zones);
+    if (zam->zone_state == NULL) {
+        return ENOMEM;
+    }
+
+    zam->lru_queue = g_queue_new();
+    if (zam->lru_queue == NULL) {
+        return ENOMEM;
+    }
+
+    zam->active_queue = g_queue_new();
+    if (zam->active_queue == NULL) {
+        return ENOMEM;
+    }
+
+    // struct zone_pair *zp = g_new(struct zone_pair, 1);
+    // zp->zone = 1;
+    // zp->chunk_offset = 2;
+    // g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(1), zp);
+    //
+    // // Retrieve a value by key
+    // zp = g_hash_table_lookup(zam->zone_map, GINT_TO_POINTER(1));
+    // printf("Value for key %d: %d\n", 1, zp->chunk_offset);
+
+    assert(zam != NULL);
+    assert(zam->zone_map != NULL);
+    assert(zam->zone_state != NULL);
+    assert(zam->active_queue != NULL);
+    assert(zam->lru_queue != NULL);
 
     return ret;
+}
+
+static void
+ze_destroy_cache(struct ze_cache * zam) {
+    // Asserts should always pass
+    assert(zam != NULL);
+    assert(zam->zone_map != NULL);
+    assert(zam->zone_state != NULL);
+    assert(zam->active_queue != NULL);
+    assert(zam->lru_queue != NULL);
+    assert(zam->fd > 0);
+
+    g_hash_table_destroy(zam->zone_map);
+    g_free(zam->zone_state);
+    g_queue_free_full(zam->active_queue, g_free);
+    g_queue_free_full(zam->lru_queue, g_free);
+    zbd_close(zam->fd);
 }
 
 int
@@ -152,17 +213,14 @@ main(int argc, char **argv) {
         return ret;
     }
 
-    struct zone_addr_map zam = {0};
-    ret = init_zone_addr_map(&zam, info.nr_zones, chunk_sz, zone_capacity);
+    struct ze_cache zam = {0};
+    ret = ze_init_cache(&zam, info.nr_zones, chunk_sz, zone_capacity, fd);
     if (ret != 0) {
         fprintf(stderr, "Failed to initialize zone address map\n");
         return ret;
     }
 
     // Cleanup
-    if (zam.zone_map != NULL) {
-        g_hash_table_destroy(zam.zone_map);
-    }
-    zbd_close(fd);
+    ze_destroy_cache(&zam);
     return 0;
 }

@@ -4,7 +4,7 @@ project('zone-evict-ideal', 'c',
                 'warning_level=3',
                 'c_std=c2x',
                 # To test ASAN
-                'b_sanitize=address'
+#                'b_sanitize=address'
         ])
 
 executable(
