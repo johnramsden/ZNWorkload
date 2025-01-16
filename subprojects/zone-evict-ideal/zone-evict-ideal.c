@@ -4,7 +4,8 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include <asm-generic/errno-base.h>
+#include <errno.h>
+#include <glib.h>
 
 #define DEBUG 1
 
@@ -18,7 +19,7 @@ struct zone_addr_map {
     uint64_t max_zone_chunks;
     size_t chunk_sz;
     uint64_t zone_cap;
-    uint32_t ***zone_entries; // multidimensional array of length [nr_zones][max_zone_chunks]
+    GHashTable *zone_map;
 };
 
 /**
@@ -80,10 +81,10 @@ zone_cap(int fd, uint64_t *zone_capacity) {
     return ret;
 }
 
-// static int
-// gen_workload(struct zone_addr_map * zam, uint32_t num) {
-//
-// }
+static int
+gen_workload(struct zone_addr_map * zam, uint32_t num) {
+
+}
 
 static int
 init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap) {
@@ -102,16 +103,16 @@ init_zone_addr_map(struct zone_addr_map * zam, uint32_t nr_zones, size_t chunk_s
         printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
     }
 
-    zam->zone_entries = malloc(nr_zones * sizeof(uint32_t **));
-    if (zam->zone_entries == NULL) {
-        return ENOMEM;
+    // Create a hash table with integer keys and values
+    zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, NULL);
+    if (zam->zone_map == NULL) {
+        return -1;
     }
-    for (size_t i = 0; i < nr_zones; i++) {
-        zam->zone_entries[i] = malloc(zam->max_zone_chunks * sizeof(uint32_t *));
-        if (zam->zone_entries[i] == NULL) {
-            return ENOMEM;
-        }
-    }
+    g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(1), GINT_TO_POINTER(100));
+
+    // Retrieve a value by key
+    int value = GPOINTER_TO_INT(g_hash_table_lookup(zam->zone_map, GINT_TO_POINTER(1)));
+    printf("Value for key %d: %d\n", 1, value);
 
     return ret;
 }
@@ -151,14 +152,17 @@ main(int argc, char **argv) {
         return ret;
     }
 
-    struct zone_addr_map zam;
+    struct zone_addr_map zam = {0};
     ret = init_zone_addr_map(&zam, info.nr_zones, chunk_sz, zone_capacity);
     if (ret != 0) {
         fprintf(stderr, "Failed to initialize zone address map\n");
         return ret;
     }
 
-    // free'd implicitly:
-    //    zone_addr_map
+    // Cleanup
+    if (zam.zone_map != NULL) {
+        g_hash_table_destroy(zam.zone_map);
+    }
+    zbd_close(fd);
     return 0;
 }

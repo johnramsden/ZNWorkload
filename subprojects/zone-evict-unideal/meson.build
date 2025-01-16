@@ -5,5 +5,5 @@ project('zone-evict-unideal', 'c',
 executable(
         'zone-evict-unideal',
         'zone-evict-unideal.c',
-        dependencies: [dependency('zbd')]
+        dependencies: [dependency('zbd'), dependency('glib-2.0')]
 )
