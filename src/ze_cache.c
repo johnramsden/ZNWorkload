@@ -233,7 +233,27 @@ void task_function(gpointer data, gpointer user_data) {
     struct ze_thread_data * thread_data = data;
 
     printf("Task %d started by thread %p\n", thread_data->tid, g_thread_self());
-    ze_print_cache(thread_data->cache);
+    // ze_print_cache(thread_data->cache);
+    while (true) {
+        uint32_t qi;
+        uint32_t wi;
+        g_mutex_lock(&thread_data->cache->reader.lock);
+        if (thread_data->cache->reader.query_index >= NR_QUERY) {
+            if (thread_data->cache->reader.workload_index >= NR_WORKLOADS-1) {
+                g_mutex_unlock(&thread_data->cache->reader.lock);
+                break;
+            }
+            thread_data->cache->reader.workload_index++;
+            thread_data->cache->reader.query_index = 0;
+        }
+        assert(thread_data->cache->reader.query_index < NR_QUERY);
+        assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
+        qi = thread_data->cache->reader.query_index++;
+        wi = thread_data->cache->reader.workload_index;
+        g_mutex_unlock(&thread_data->cache->reader.lock);
+        printf("[%d]: simple_workload[%d][%d]=%d\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
+        sleep(0.25);
+    }
     // sleep(1); // Simulate work
     printf("Task %d finished by thread %p\n", thread_data->tid, g_thread_self());
 }
