@@ -1,4 +1,4 @@
-#include "zone-evict-ideal.h"
+#include "ze_cache.h"
 
 #include <assert.h>
 
@@ -9,9 +9,6 @@
 #include <errno.h>
 #include <glib.h>
 #include <stdbool.h>
-
-#define DEBUG 1
-#define VERIFY 1
 
 struct ze_pair {
     uint32_t zone;
@@ -99,10 +96,24 @@ zone_cap(int fd, uint64_t *zone_capacity) {
     return ret;
 }
 
+#ifdef VERIFY
+static void
+check_assertions_ze_cache(struct ze_cache * zam) {
+    // Asserts should always pass
+    assert(zam != NULL);
+    assert(zam->zone_map != NULL);
+    assert(zam->zone_state != NULL);
+    assert(zam->active_queue != NULL);
+    assert(zam->lru_queue != NULL);
+    assert(zam->fd > 0);
+}
+#define VERIFY_ZE_CACHE(ptr) check_assertions_ze_cache(ptr)
+#else
+#define VERIFY_ZE_CACHE(ptr) // Do nothing
+#endif
+
 static int
 ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap, int fd) {
-    assert(zam != NULL);
-
     int ret = 0;
 
     zam->fd = fd;
@@ -152,25 +163,13 @@ ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_
     // zp = g_hash_table_lookup(zam->zone_map, GINT_TO_POINTER(1));
     // printf("Value for key %d: %d\n", 1, zp->chunk_offset);
 
-    assert(zam != NULL);
-    assert(zam->zone_map != NULL);
-    assert(zam->zone_state != NULL);
-    assert(zam->active_queue != NULL);
-    assert(zam->lru_queue != NULL);
+    VERIFY_ZE_CACHE(zam);
 
     return ret;
 }
 
 static void
 ze_destroy_cache(struct ze_cache * zam) {
-    // Asserts should always pass
-    assert(zam != NULL);
-    assert(zam->zone_map != NULL);
-    assert(zam->zone_state != NULL);
-    assert(zam->active_queue != NULL);
-    assert(zam->lru_queue != NULL);
-    assert(zam->fd > 0);
-
     g_hash_table_destroy(zam->zone_map);
     g_free(zam->zone_state);
     g_queue_free_full(zam->active_queue, g_free);
@@ -198,6 +197,13 @@ main(int argc, char **argv) {
     size_t chunk_sz = strtoul(chunk_sz_str, NULL, 10);
 
     printf("Running with configuration:\n\tDevice name: %s\n\tChunk size: %lu\n", device, chunk_sz);
+
+#ifdef DEBUG
+    printf("\tDEBUG=on\n");
+#endif
+#ifdef VERIFY
+    printf("\tVERIFY=on\n");
+#endif
 
     struct zbd_info info;
     int fd = zbd_open(device, O_RDWR, &info);

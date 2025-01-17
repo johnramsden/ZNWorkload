@@ -1,9 +1,11 @@
-project('ZNWorkload', 'c')
-
-subprojects = [
-    'zone-evict-ideal',
-    'zone-evict-unideal',
-]
+project('ZNWorkload', 'c',
+        version : '1.0.0',
+        default_options : [
+            'warning_level=3',
+            'c_std=c2x',
+            # To test ASAN
+            #                'b_sanitize=address'
+        ])
 
 # define zbd dep
 zbd_lib = declare_dependency(
@@ -11,9 +13,26 @@ zbd_lib = declare_dependency(
     link_args: ['-L../vendor/lib/lib', '-lzbd', '-Wl,-rpath,' + meson.current_source_dir() / 'vendor/lib/lib']
 )
 
-meson.override_dependency('zbd', zbd_lib)
+# Read options
+verify_enabled = get_option('verify')
+debug_enabled = get_option('debugging')
 
-# Trigger compilation for each subproject
-foreach sp : subprojects
-    sub = subproject(sp, default_options: ['default_library=static'])
-endforeach
+# Conditional compiler flags
+cflags = []
+if verify_enabled
+    cflags += ['-DVERIFY']
+endif
+
+if debug_enabled
+    cflags += ['-DDEBUG', '-g']
+endif
+
+# Print options for debugging purposes
+message('Verify mode: ' + verify_enabled.to_string())
+message('Debug mode: ' + debug_enabled.to_string())
+
+# Define the include directory
+inc_dir = include_directories('include')
+
+# Add the src subdirectory
+subdir('src')

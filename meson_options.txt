@@ -1,0 +1,2 @@
+option('verify', type : 'boolean', value : true, description : 'Enable verify mode')
+option('debugging', type : 'boolean', value : true, description : 'Enable debug mode')
