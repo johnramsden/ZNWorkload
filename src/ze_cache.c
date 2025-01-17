@@ -33,6 +33,7 @@ struct ze_reader {
     GMutex lock;
     uint32_t query_index;
     uint32_t workload_index;
+    uint32_t repeat_number;
 };
 
 enum ze_zone_state {
@@ -215,15 +216,7 @@ ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_
     g_mutex_init(&zam->reader.lock);
     zam->reader.query_index = 0;
     zam->reader.workload_index = 0;
-
-    // struct zone_pair *zp = g_new(struct zone_pair, 1);
-    // zp->zone = 1;
-    // zp->chunk_offset = 2;
-    // g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(1), zp);
-    //
-    // // Retrieve a value by key
-    // zp = g_hash_table_lookup(zam->zone_map, GINT_TO_POINTER(1));
-    // printf("Value for key %d: %d\n", 1, zp->chunk_offset);
+    zam->reader.repeat_number = 1;
 
     VERIFY_ZE_CACHE(zam);
 
@@ -245,7 +238,19 @@ static int
 ze_cache_get(struct ze_cache * zam, uint32_t id) {
     VERIFY_ZE_CACHE(zam);
 
+    g_mutex_lock(&zam->cache_lock);
 
+    if (g_hash_table_contains(zam->zone_map, GINT_TO_POINTER(id))) {
+        printf("Cache ID %u in cache\n", id);
+    } else {
+        printf("Cache ID not %u in cache\n", id);
+        struct ze_pair *zp = g_new(struct ze_pair, 1);
+        zp->zone = 1;
+        zp->chunk_offset = 2;
+        g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(id), zp);
+    }
+
+    g_mutex_unlock(&zam->cache_lock);
 }
 
 // Task function
@@ -260,19 +265,34 @@ void task_function(gpointer data, gpointer user_data) {
         uint32_t wi;
         g_mutex_lock(&thread_data->cache->reader.lock);
         if (thread_data->cache->reader.query_index >= NR_QUERY) {
-            if (thread_data->cache->reader.workload_index >= NR_WORKLOADS-1) {
+            thread_data->cache->reader.query_index = 0;
+
+            if (thread_data->cache->reader.repeat_number < NR_REPEAT_WORKLOAD) {
+                thread_data->cache->reader.repeat_number++;
+            } else {
+                thread_data->cache->reader.repeat_number = 1;
+                thread_data->cache->reader.workload_index++;
+            }
+
+            if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
                 g_mutex_unlock(&thread_data->cache->reader.lock);
                 break;
             }
-            thread_data->cache->reader.workload_index++;
-            thread_data->cache->reader.query_index = 0;
         }
+
+        // Assertions to validate state
+        assert(thread_data->cache->reader.repeat_number <= NR_REPEAT_WORKLOAD);
         assert(thread_data->cache->reader.query_index < NR_QUERY);
         assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
+        assert(thread_data->cache->reader.repeat_number < NR_REPEAT_WORKLOAD+1);
+        assert(thread_data->cache->reader.query_index < NR_QUERY);
+        assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
+
         qi = thread_data->cache->reader.query_index++;
         wi = thread_data->cache->reader.workload_index;
         g_mutex_unlock(&thread_data->cache->reader.lock);
-        printf("[%d]: simple_workload[%d][%d]=%d\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
+        ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
+        printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, g_thread_self());
 }
