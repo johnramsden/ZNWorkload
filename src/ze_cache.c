@@ -177,12 +177,20 @@ ze_destroy_cache(struct ze_cache * zam) {
     zbd_close(zam->fd);
 }
 
+// Task function
+void task_function(gpointer data, gpointer user_data) {
+    int task_id = GPOINTER_TO_INT(data);
+    printf("Task %d started by thread %p\n", task_id, g_thread_self());
+    sleep(1); // Simulate work
+    printf("Task %d finished by thread %p\n", task_id, g_thread_self());
+}
+
 int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ>\n", argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS>\n", argv[0]);
         return -1;
     }
 
@@ -192,11 +200,15 @@ main(int argc, char **argv) {
     }
 
     char *device = argv[1];
-    char *chunk_sz_str = argv[2];
 
-    size_t chunk_sz = strtoul(chunk_sz_str, NULL, 10);
+    size_t chunk_sz = strtoul(argv[2], NULL, 10);
+    uint32_t nr_threads = strtoul(argv[3], NULL, 10);
 
-    printf("Running with configuration:\n\tDevice name: %s\n\tChunk size: %lu\n", device, chunk_sz);
+    printf("Running with configuration:\n"
+            "\tDevice name: %s\n"
+            "\tChunk size: %lu\n"
+            "\tThreads: %u\n",
+            device, chunk_sz);
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -225,6 +237,29 @@ main(int argc, char **argv) {
         fprintf(stderr, "Failed to initialize zone address map\n");
         return ret;
     }
+
+    GError *error = NULL;
+
+    // Create a thread pool with a maximum of nr_threads
+    GThreadPool *pool = g_thread_pool_new(task_function, NULL, nr_threads, FALSE, &error);
+    if (error) {
+        fprintf(stderr, "Error creating thread pool: %s\n", error->message);
+        return 1;
+    }
+
+    // Push tasks to the thread pool
+    for (int i = 0; i < 10; i++) {
+        int *v = g_new(int, 1);
+        *v = i;
+        g_thread_pool_push(pool, v, &error);
+        if (error) {
+            fprintf(stderr, "Error pushing task: %s\n", error->message);
+            return 1;
+        }
+    }
+
+    // Wait for tasks to finish and free the thread pool
+    g_thread_pool_free(pool, FALSE, TRUE);
 
     // Cleanup
     ze_destroy_cache(&zam);
