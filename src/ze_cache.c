@@ -10,9 +10,28 @@
 #include <glib.h>
 #include <stdbool.h>
 
+
+// No evict
+#define NR_WORKLOADS 2
+#define NR_QUERY 20
+#define NR_REPEAT_WORKLOAD 2
+
+uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+    {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+};
+
+char *RANDOM_DATA = NULL;
+
 struct ze_pair {
     uint32_t zone;
     uint32_t chunk_offset;
+};
+
+struct ze_reader {
+    GMutex lock;
+    uint32_t query_index;
+    uint32_t workload_index;
 };
 
 enum ze_zone_state {
@@ -29,12 +48,18 @@ struct ze_cache {
     uint64_t zone_cap;
     // Cache
     GQueue *lru_queue;       // LRU queue for zones
-    GMutex lock;
+    GMutex cache_lock;
     GHashTable *zone_map;    // Map ID to ze_pair (in lru)
     // Free/active,state lists
     GQueue *free_list;       // List of free zones
     GQueue *active_queue;     // List of active zones
     enum ze_zone_state *zone_state;
+    struct ze_reader reader;
+};
+
+struct ze_thread_data {
+    struct ze_cache *cache;
+    uint32_t tid;
 };
 
 /**
@@ -112,6 +137,17 @@ check_assertions_ze_cache(struct ze_cache * zam) {
 #define VERIFY_ZE_CACHE(ptr) // Do nothing
 #endif
 
+static void
+ze_print_cache(struct ze_cache * zam) {
+    (void)zam;
+#ifdef DEBUG
+        printf("\tchunk_sz=%lu\n", zam->chunk_sz);
+        printf("\tnr_zones=%u\n", zam->nr_zones);
+        printf("\tzone_cap=%" PRIu64 "\n", zam->zone_cap);
+        printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
+#endif
+}
+
 static int
 ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap, int fd) {
     int ret = 0;
@@ -122,13 +158,13 @@ ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_
     zam->zone_cap = zone_cap;
     zam->max_zone_chunks = zone_cap / chunk_sz;
 
-    if (DEBUG) {
+#ifdef DEBUG
         printf("Initialized address map:\n");
         printf("\tchunk_sz=%lu\n", chunk_sz);
         printf("\tnr_zones=%u\n", nr_zones);
         printf("\tzone_cap=%" PRIu64 "\n", zone_cap);
         printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
-    }
+#endif
 
     // Create a hash table with integer keys and values
     zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
@@ -154,6 +190,11 @@ ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_
         return ENOMEM;
     }
 
+    g_mutex_init(&zam->cache_lock);
+    g_mutex_init(&zam->reader.lock);
+    zam->reader.query_index = 0;
+    zam->reader.workload_index = 0;
+
     // struct zone_pair *zp = g_new(struct zone_pair, 1);
     // zp->zone = 1;
     // zp->chunk_offset = 2;
@@ -175,14 +216,26 @@ ze_destroy_cache(struct ze_cache * zam) {
     g_queue_free_full(zam->active_queue, g_free);
     g_queue_free_full(zam->lru_queue, g_free);
     zbd_close(zam->fd);
+    g_mutex_clear(&zam->cache_lock);
+    g_mutex_clear(&zam->reader.lock);
+}
+
+static int
+ze_cache_get(struct ze_cache * zam, uint32_t id) {
+    VERIFY_ZE_CACHE(zam);
+
+
 }
 
 // Task function
 void task_function(gpointer data, gpointer user_data) {
-    int task_id = GPOINTER_TO_INT(data);
-    printf("Task %d started by thread %p\n", task_id, g_thread_self());
-    sleep(1); // Simulate work
-    printf("Task %d finished by thread %p\n", task_id, g_thread_self());
+    (void)user_data;
+    struct ze_thread_data * thread_data = data;
+
+    printf("Task %d started by thread %p\n", thread_data->tid, g_thread_self());
+    ze_print_cache(thread_data->cache);
+    // sleep(1); // Simulate work
+    printf("Task %d finished by thread %p\n", thread_data->tid, g_thread_self());
 }
 
 int
@@ -202,13 +255,15 @@ main(int argc, char **argv) {
     char *device = argv[1];
 
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
-    uint32_t nr_threads = strtoul(argv[3], NULL, 10);
+    int32_t nr_threads = strtol(argv[3], NULL, 10);
+    int32_t nr_eviction_threads = 1;
 
     printf("Running with configuration:\n"
             "\tDevice name: %s\n"
             "\tChunk size: %lu\n"
-            "\tThreads: %u\n",
-            device, chunk_sz);
+            "\tWorker threads: %u\n"
+            "\tEviction threads: %u\n",
+            device, chunk_sz, nr_threads, nr_eviction_threads);
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -239,7 +294,6 @@ main(int argc, char **argv) {
     }
 
     GError *error = NULL;
-
     // Create a thread pool with a maximum of nr_threads
     GThreadPool *pool = g_thread_pool_new(task_function, NULL, nr_threads, FALSE, &error);
     if (error) {
@@ -248,10 +302,11 @@ main(int argc, char **argv) {
     }
 
     // Push tasks to the thread pool
-    for (int i = 0; i < 10; i++) {
-        int *v = g_new(int, 1);
-        *v = i;
-        g_thread_pool_push(pool, v, &error);
+    struct ze_thread_data *thread_data = g_new(struct ze_thread_data, nr_threads);
+    for (int i = 0; i < nr_threads; i++) {
+        thread_data[i].tid = i;
+        thread_data[i].cache = &zam;
+        g_thread_pool_push(pool, &thread_data[i], &error);
         if (error) {
             fprintf(stderr, "Error pushing task: %s\n", error->message);
             return 1;
@@ -263,5 +318,6 @@ main(int argc, char **argv) {
 
     // Cleanup
     ze_destroy_cache(&zam);
+    g_free(thread_data);
     return 0;
 }

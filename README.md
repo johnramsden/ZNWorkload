@@ -45,3 +45,23 @@ To destroy:
 ```shell
 ./scripts/nullblk-zoned-delete.sh 0 # Replace 0 with ID if different
 ```
+
+### Min-workload
+
+For mini-test:
+
+* 14 zones
+* 8chunks per zone
+* `2*14=28 is capacity`
+* Start evict at 2 zones free: `24` entries
+* On evict, evict 4 zones: `20` entries remain
+
+```shell
+./scripts/nullblk-zoned.sh 4096 1 0 14
+```
+
+```shell
+./ze_cache /dev/nullb0 524288
+```
+
+This means 2chunks to fill a zone: `1024*1024/2`
