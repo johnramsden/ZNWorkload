@@ -10,6 +10,7 @@
 #include <glib.h>
 #include <stdbool.h>
 
+#define SEED 42
 
 // No evict
 #define NR_WORKLOADS 2
@@ -21,7 +22,7 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
     {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
 };
 
-char *RANDOM_DATA = NULL;
+unsigned char *RANDOM_DATA = NULL;
 
 struct ze_pair {
     uint32_t zone;
@@ -61,6 +62,26 @@ struct ze_thread_data {
     struct ze_cache *cache;
     uint32_t tid;
 };
+
+unsigned char *generate_random_buffer(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+
+    // Allocate memory for the buffer
+    unsigned char *buffer = (unsigned char *)malloc(size);
+    if (buffer == NULL) {
+        return NULL;
+    }
+
+    srand(SEED);
+
+    for (size_t i = 0; i < size; i++) {
+        buffer[i] = (unsigned char)(rand() % 256); // Random byte (0-255)
+    }
+
+    return buffer;
+}
 
 /**
  * Uniform rand with limit
@@ -252,9 +273,7 @@ void task_function(gpointer data, gpointer user_data) {
         wi = thread_data->cache->reader.workload_index;
         g_mutex_unlock(&thread_data->cache->reader.lock);
         printf("[%d]: simple_workload[%d][%d]=%d\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
-        sleep(0.25);
     }
-    // sleep(1); // Simulate work
     printf("Task %d finished by thread %p\n", thread_data->tid, g_thread_self());
 }
 
@@ -313,6 +332,11 @@ main(int argc, char **argv) {
         return ret;
     }
 
+    RANDOM_DATA = generate_random_buffer(chunk_sz);
+    if (RANDOM_DATA == NULL) {
+        return ENOMEM;
+    }
+
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
     GThreadPool *pool = g_thread_pool_new(task_function, NULL, nr_threads, FALSE, &error);
@@ -339,5 +363,6 @@ main(int argc, char **argv) {
     // Cleanup
     ze_destroy_cache(&zam);
     g_free(thread_data);
+    free(RANDOM_DATA);
     return 0;
 }
