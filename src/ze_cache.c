@@ -44,6 +44,8 @@ enum ze_zone_state {
 
 struct ze_cache {
     int fd;
+    uint32_t max_nr_active_zones;
+    uint32_t nr_active_zones;
     uint32_t nr_zones;
     uint64_t max_zone_chunks;
     size_t chunk_sz;
@@ -64,7 +66,8 @@ struct ze_thread_data {
     uint32_t tid;
 };
 
-unsigned char *generate_random_buffer(size_t size) {
+static unsigned char *
+generate_random_buffer(size_t size) {
     if (size == 0) {
         return NULL;
     }
@@ -82,6 +85,15 @@ unsigned char *generate_random_buffer(size_t size) {
     }
 
     return buffer;
+}
+
+/**
+ * @brief Exit if NOMEM
+ */
+void
+nomem() {
+    fprintf(stderr, "ERROR: No memory\n");
+    exit(ENOMEM);
 }
 
 /**
@@ -152,6 +164,7 @@ check_assertions_ze_cache(struct ze_cache * zam) {
     assert(zam->zone_state != NULL);
     assert(zam->active_queue != NULL);
     assert(zam->lru_queue != NULL);
+    assert(zam->free_list != NULL);
     assert(zam->fd > 0);
 }
 #define VERIFY_ZE_CACHE(ptr) check_assertions_ze_cache(ptr)
@@ -170,46 +183,51 @@ ze_print_cache(struct ze_cache * zam) {
 #endif
 }
 
-static int
-ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_t zone_cap, int fd) {
-    int ret = 0;
-
+static void
+ze_init_cache(struct ze_cache * zam, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap, int fd) {
     zam->fd = fd;
     zam->chunk_sz = chunk_sz;
-    zam->nr_zones = nr_zones;
+    zam->nr_zones = info->nr_zones;
+    zam->zone_cap = zone_cap;
+    zam->max_nr_active_zones = info->max_nr_active_zones;
+    zam->nr_active_zones = 0;
     zam->zone_cap = zone_cap;
     zam->max_zone_chunks = zone_cap / chunk_sz;
 
 #ifdef DEBUG
-        printf("Initialized address map:\n");
-        printf("\tchunk_sz=%lu\n", chunk_sz);
-        printf("\tnr_zones=%u\n", nr_zones);
-        printf("\tzone_cap=%" PRIu64 "\n", zone_cap);
+        printf("Initialized cache:\n");
+        printf("\tchunk_sz=%lu\n", zam->chunk_sz);
+        printf("\tnr_zones=%u\n", zam->nr_zones);
+        printf("\tzone_cap=%" PRIu64 "\n", zam->zone_cap);
         printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
+        printf("\tmax_nr_active_zones=%" PRIu64 "\n", zam->max_nr_active_zones);
 #endif
 
     // Create a hash table with integer keys and values
     zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     if (zam->zone_map == NULL) {
-        return ENOMEM;
+        nomem();
     }
 
     // Init lists:
 
-    // Alloc and set all to FREE
-    zam->zone_state = g_new0(enum ze_zone_state, nr_zones);
+    zam->zone_state = g_new0(enum ze_zone_state, zam->nr_zones);
     if (zam->zone_state == NULL) {
-        return ENOMEM;
+         nomem();
     }
 
     zam->lru_queue = g_queue_new();
     if (zam->lru_queue == NULL) {
-        return ENOMEM;
+         nomem();
     }
 
     zam->active_queue = g_queue_new();
     if (zam->active_queue == NULL) {
-        return ENOMEM;
+         nomem();
+    }
+    zam->free_list = g_queue_new();
+    if (zam->free_list == NULL) {
+         nomem();
     }
 
     g_mutex_init(&zam->cache_lock);
@@ -219,8 +237,6 @@ ze_init_cache(struct ze_cache * zam, uint32_t nr_zones, size_t chunk_sz, uint64_
     zam->reader.repeat_number = 1;
 
     VERIFY_ZE_CACHE(zam);
-
-    return ret;
 }
 
 static void
@@ -229,7 +245,9 @@ ze_destroy_cache(struct ze_cache * zam) {
     g_free(zam->zone_state);
     g_queue_free_full(zam->active_queue, g_free);
     g_queue_free_full(zam->lru_queue, g_free);
+
     zbd_close(zam->fd);
+
     g_mutex_clear(&zam->cache_lock);
     g_mutex_clear(&zam->reader.lock);
 }
@@ -282,9 +300,6 @@ void task_function(gpointer data, gpointer user_data) {
 
         // Assertions to validate state
         assert(thread_data->cache->reader.repeat_number <= NR_REPEAT_WORKLOAD);
-        assert(thread_data->cache->reader.query_index < NR_QUERY);
-        assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
-        assert(thread_data->cache->reader.repeat_number < NR_REPEAT_WORKLOAD+1);
         assert(thread_data->cache->reader.query_index < NR_QUERY);
         assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
 
@@ -346,15 +361,11 @@ main(int argc, char **argv) {
     }
 
     struct ze_cache zam = {0};
-    ret = ze_init_cache(&zam, info.nr_zones, chunk_sz, zone_capacity, fd);
-    if (ret != 0) {
-        fprintf(stderr, "Failed to initialize zone address map\n");
-        return ret;
-    }
+    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd);
 
     RANDOM_DATA = generate_random_buffer(chunk_sz);
     if (RANDOM_DATA == NULL) {
-        return ENOMEM;
+         nomem();
     }
 
     GError *error = NULL;
