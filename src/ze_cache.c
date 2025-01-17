@@ -22,6 +22,13 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
     {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
 };
 
+/* Will only print messages (to stdout) when DEBUG is defined */
+#ifdef DEBUG
+#    define dbg_printf(M, ...) printf("%s: " M, __func__, ##__VA_ARGS__)
+#else
+#    define dbg_printf(...)
+#endif
+
 unsigned char *RANDOM_DATA = NULL;
 
 struct ze_pair {
@@ -225,6 +232,7 @@ ze_init_cache(struct ze_cache * zam, struct zbd_info *info, size_t chunk_sz, uin
     if (zam->active_queue == NULL) {
          nomem();
     }
+    
     zam->free_list = g_queue_new();
     if (zam->free_list == NULL) {
          nomem();
