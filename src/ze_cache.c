@@ -474,6 +474,11 @@ ze_cache_get(struct ze_cache * cache, const uint32_t id) {
         if (zp == NULL) {
             nomem();
         }
+        /* TODO:
+         * Query active queue, if empty and nr_active < max get zone from free queue, else spin?
+         * If no room foreground gc (shouldn't occur)
+         * insert into disk and hash table
+         */
         zp->zone = 0;
         zp->chunk_offset = 2;
         g_hash_table_insert(cache->zone_map, id_ptr, zp);
@@ -520,6 +525,7 @@ void task_function(gpointer data, gpointer user_data) {
 #ifdef VERIFY
         assert(validate_ze_read(data, simple_workload[wi][qi]));
 #endif
+        free(data);
         printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *)g_thread_self());
