@@ -69,6 +69,22 @@ enum ze_zone_state {
     ZE_ZONE_ACTIVE = 2, /**< The zone is currently in use and may still have space for new data. */
 };
 
+/**
+ * @enum ze_eviction_policy
+ * @brief Defines eviction policies
+ */
+enum ze_eviction_policy {
+    ZE_EVICT_ZONE = 0, /**< Zone granularity eviction. */
+    ZE_EVICT_CHUNK = 1, /**< Chunk granularity eviction. */
+};
+/**
+ * @enum ze_backend
+ * @brief Defines SSD backends
+ */
+enum ze_backend {
+    ZE_BACKEND_ZNS = 0, /**< ZNS SSD backend. */
+    ZE_BACKEND_BLOCK = 1, /**< Block-interface backend. */
+};
 
 /**
  * @struct ze_cache
@@ -79,6 +95,7 @@ enum ze_zone_state {
  * and mapping of data IDs to specific zones and offsets.
  */
 struct ze_cache {
+    enum ze_backend backend;        /**< SSD backend. */
     int fd;                         /**< File descriptor for associated disk. */
     uint32_t max_nr_active_zones;   /**< Maximum number of zones that can be active at once. */
     uint32_t nr_active_zones;       /**< Current number of active zones. */
@@ -96,6 +113,7 @@ struct ze_cache {
     GQueue *free_list;              /**< Queue of zones that are currently free and available for allocation. */
     GQueue *active_queue;           /**< Queue of zones that are currently active and in use. */
     enum ze_zone_state *zone_state; /**< Array representing the state of each zone. */
+    enum ze_eviction_policy eviction_policy; /**< Eviction policy. */
 
     struct ze_reader reader;        /**< Reader structure for tracking workload location. */
 };
@@ -307,9 +325,11 @@ ze_init_free_list(struct ze_cache * cache) {
  * @param chunk_sz The size of each chunk in bytes.
  * @param zone_cap The maximum capacity per zone in bytes.
  * @param fd File descriptor associated with the disk
+ * @param eviction_policy Eviction policy used
  */
 static void
-ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap, int fd) {
+ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
+              int fd, enum ze_eviction_policy eviction_policy, enum ze_backend backend) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -318,6 +338,8 @@ ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, u
     cache->nr_active_zones = 0;
     cache->zone_cap = zone_cap;
     cache->max_zone_chunks = zone_cap / chunk_sz;
+    cache->eviction_policy = eviction_policy;
+    cache->backend = backend;
 
 #ifdef DEBUG
         printf("Initialized cache:\n");
@@ -492,7 +514,7 @@ main(int argc, char **argv) {
     }
 
     struct ze_cache zam = {0};
-    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd);
+    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd, ZE_EVICT_ZONE, ZE_BACKEND_ZNS);
 
     RANDOM_DATA = generate_random_buffer(chunk_sz);
     if (RANDOM_DATA == NULL) {
