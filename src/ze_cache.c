@@ -1,3 +1,6 @@
+// For pread
+#define _XOPEN_SOURCE 500
+
 #include "ze_cache.h"
 
 #include <assert.h>
@@ -8,6 +11,7 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <glib.h>
+#include <unistd.h>
 #include <stdbool.h>
 
 #define SEED 42
@@ -23,6 +27,8 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
     {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
 };
 
+unsigned char *RANDOM_DATA = NULL;
+
 /* Will only print messages (to stdout) when DEBUG is defined */
 #ifdef DEBUG
 #    define dbg_printf(M, ...) printf("%s: " M, __func__, ##__VA_ARGS__)
@@ -30,7 +36,9 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
 #    define dbg_printf(...)
 #endif
 
-unsigned char *RANDOM_DATA = NULL;
+// Get write pointer from (zone, chunk)
+#define CHUNK_POINTER(z_sz, c_sz, c_num, z_num) \
+    (((uint64_t) (z_sz) * (uint64_t) (z_num)) + ((uint64_t) (c_num) * (uint64_t) (c_sz)))
 
 /**
  * @struct ze_pair
@@ -279,7 +287,7 @@ check_assertions_ze_cache(struct ze_cache * zam) {
 #define VERIFY_ZE_CACHE(ptr) // Do nothing
 #endif
 
-static void
+[[maybe_unused]] static void
 ze_print_cache(struct ze_cache * cache) {
     (void)cache;
 #ifdef DEBUG
@@ -347,7 +355,7 @@ ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, u
         printf("\tnr_zones=%u\n", cache->nr_zones);
         printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
         printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
-        printf("\tmax_nr_active_zones=%" PRIu64 "\n", cache->max_nr_active_zones);
+        printf("\tmax_nr_active_zones=%u\n", cache->max_nr_active_zones);
 #endif
 
     // Create a hash table with integer keys and values
@@ -390,45 +398,94 @@ ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, u
  * including hash tables, queues, and state arrays. It also closes the file descriptor
  * and clears associated mutexes to ensure proper cleanup.
  *
- * @param zam Pointer to the `ze_cache` structure to be destroyed.
+ * @param cache Pointer to the `ze_cache` structure to be destroyed.
  *
  * @note After calling this function, the `ze_cache` structure should not be used
  *       unless it is reinitialized.
  * @note The function assumes that `zam` is properly initialized before being passed.
  */
 static void
-ze_destroy_cache(struct ze_cache * zam) {
-    g_hash_table_destroy(zam->zone_map);
-    g_free(zam->zone_state);
-    g_queue_free_full(zam->active_queue, g_free);
-    g_queue_free_full(zam->lru_queue, g_free);
+ze_destroy_cache(struct ze_cache * cache) {
+    g_hash_table_destroy(cache->zone_map);
+    g_free(cache->zone_state);
+    g_queue_free_full(cache->active_queue, g_free);
+    g_queue_free_full(cache->lru_queue, g_free);
 
-    zbd_close(zam->fd);
+    zbd_close(cache->fd);
 
-    g_mutex_clear(&zam->cache_lock);
-    g_mutex_clear(&zam->reader.lock);
+    g_mutex_clear(&cache->cache_lock);
+    g_mutex_clear(&cache->reader.lock);
 }
 
-static void
-ze_cache_get(struct ze_cache * zam, const uint32_t id) {
-    VERIFY_ZE_CACHE(zam);
+/**
+ * @brief Read a chunk from disk
+ *
+ * @param cache Pointer to the `ze_cache` structure
+ * @param zone_pair Chunk, zone pair
+ * @return Buffer read from disk, to be freed by caller
+ */
+static unsigned char*
+ze_read_from_disk(struct ze_cache * cache, struct ze_pair* zone_pair) {
+    unsigned char* data = malloc(cache->chunk_sz);
+    if (data == NULL) {
+        nomem();
+    }
 
-    g_mutex_lock(&zam->cache_lock);
+    unsigned long long wp =
+    CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, zone_pair->chunk_offset, zone_pair->zone);
 
-    if (g_hash_table_contains(zam->zone_map, GINT_TO_POINTER(id))) {
-        printf("Cache ID %u in cache\n", id);
+    dbg_printf("[%u,%u] read from write pointer: %llu\n", zone_pair->zone, zone_pair->chunk_offset, wp);
+
+    size_t b = pread(cache->fd, data, cache->chunk_sz, wp);
+    if (b != cache->chunk_sz) {
+        fprintf(stderr, "Couldn't read from fd\n");
+        free(data);
+        return NULL;
+    }
+
+    return data;
+}
+
+/**
+ * @brief Get data from cache
+ *
+ * Gets data from cache if present, otherwise pulls from emulated remote
+ *
+ * @param cache Pointer to the `ze_cache` structure.
+ * @param id Cache item ID to get
+ * @returns Buffer of data recieved or NULL on error (callee is responsible for freeing)
+ */
+static unsigned char*
+ze_cache_get(struct ze_cache * cache, const uint32_t id) {
+    VERIFY_ZE_CACHE(cache);
+    unsigned char* data = NULL;
+    gpointer id_ptr = GINT_TO_POINTER(id);
+
+    g_mutex_lock(&cache->cache_lock);
+
+    if (g_hash_table_contains(cache->zone_map, id_ptr)) {
+        struct ze_pair *zp;
+        zp = g_hash_table_lookup(cache->zone_map, id_ptr);
+        printf("Cache ID %u in cache at zone_pointer [%u,%u]\n", id, zp->zone, zp->chunk_offset);
+        data = ze_read_from_disk(cache, zp);
     } else {
         printf("Cache ID %u not in cache\n", id);
         struct ze_pair *zp = g_new(struct ze_pair, 1);
         if (zp == NULL) {
             nomem();
         }
-        zp->zone = 1;
+        zp->zone = 0;
         zp->chunk_offset = 2;
-        g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(id), zp);
+        g_hash_table_insert(cache->zone_map, id_ptr, zp);
     }
 
-    g_mutex_unlock(&zam->cache_lock);
+    g_mutex_unlock(&cache->cache_lock);
+    return data;
+}
+
+static int validate_ze_read(unsigned char * data, uint32_t id) {
+    // TODO: Check first 32bits match id
+    return 1;
 }
 
 // Task function
@@ -436,7 +493,7 @@ void task_function(gpointer data, gpointer user_data) {
     (void)user_data;
     struct ze_thread_data * thread_data = data;
 
-    printf("Task %d started by thread %p\n", thread_data->tid, g_thread_self());
+    printf("Task %d started by thread %p\n", thread_data->tid, (void *)g_thread_self());
     // ze_print_cache(thread_data->cache);
     while (true) {
         g_mutex_lock(&thread_data->cache->reader.lock);
@@ -459,10 +516,13 @@ void task_function(gpointer data, gpointer user_data) {
         assert(qi < NR_QUERY);
         assert(wi < NR_WORKLOADS);
 
-        ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
+        unsigned char* data = ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
+#ifdef VERIFY
+        assert(validate_ze_read(data, simple_workload[wi][qi]));
+#endif
         printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
     }
-    printf("Task %d finished by thread %p\n", thread_data->tid, g_thread_self());
+    printf("Task %d finished by thread %p\n", thread_data->tid, (void *)g_thread_self());
 }
 
 int
