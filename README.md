@@ -61,7 +61,17 @@ For mini-test:
 ```
 
 ```shell
-./ze_cache /dev/nullb0 524288
+./ze_cache /dev/nullb0 524288 2
 ```
 
 This means 2chunks to fill a zone: `1024*1024/2`
+
+### Documentation
+
+Run `doxygen`:
+
+```shell
+doxygen Doxyfile
+```
+
+Open `docs/html/index.html` in a browser.
