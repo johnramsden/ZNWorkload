@@ -32,48 +32,100 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
 
 unsigned char *RANDOM_DATA = NULL;
 
+/**
+ * @struct ze_pair
+ * @brief Represents a mapping of data to a specific zone and chunk offset.
+ *
+ * This structure is used to store references to locations within the cache,
+ * allowing data to be efficiently retrieved or managed.
+ */
 struct ze_pair {
-    uint32_t zone;
-    uint32_t chunk_offset;
+    uint32_t zone; /**< Identifier of the zone where the data is stored. */
+    uint32_t chunk_offset; /**< Offset within the zone where the data chunk is located. */
 };
 
+/**
+ * @struct ze_reader
+ * @brief Manages concurrent read operations within the cache.
+ *
+ * The reader structure tracks query execution and workload distribution,
+ * ensuring thread-safe access to cached data.
+ */
 struct ze_reader {
-    GMutex lock;
-    uint32_t query_index;
-    uint32_t workload_index;
-    uint32_t repeat_number;
+    GMutex lock;          /**< Mutex to synchronize access to the reader state. */
+    uint32_t query_index; /**< Index of the next query to be processed. */
+    uint32_t workload_index; /**< Index of the workload associated with the reader. */
 };
 
+/**
+ * @enum ze_zone_state
+ * @brief Defines possible states of a cache zone.
+ *
+ * Zones transition between these states based on their usage and availability.
+ */
 enum ze_zone_state {
-    ZE_ZONE_FREE = 0,
-    ZE_ZONE_FULL = 1,
-    ZE_ZONE_ACTIVE = 2,
+    ZE_ZONE_FREE = 0, /**< The zone is available for new allocations. */
+    ZE_ZONE_FULL = 1, /**< The zone is completely occupied and cannot accept new data. */
+    ZE_ZONE_ACTIVE = 2, /**< The zone is currently in use and may still have space for new data. */
 };
 
+
+/**
+ * @struct ze_cache
+ * @brief Represents a cache system that manages data storage in predefined zones.
+ *
+ * This structure is responsible for managing zones, including tracking active,
+ * free, and recently used zones. It supports parallel insertion, LRU eviction,
+ * and mapping of data IDs to specific zones and offsets.
+ */
 struct ze_cache {
-    int fd;
-    uint32_t max_nr_active_zones;
-    uint32_t nr_active_zones;
-    uint32_t nr_zones;
-    uint64_t max_zone_chunks;
-    size_t chunk_sz;
-    uint64_t zone_cap;
-    // Cache
-    GQueue *lru_queue;       // LRU queue for zones
-    GMutex cache_lock;
-    GHashTable *zone_map;    // Map ID to ze_pair (in lru)
-    // Free/active,state lists
-    GQueue *free_list;       // List of free zones
-    GQueue *active_queue;     // List of active zones
-    enum ze_zone_state *zone_state;
-    struct ze_reader reader;
+    int fd;                         /**< File descriptor for associated disk. */
+    uint32_t max_nr_active_zones;   /**< Maximum number of zones that can be active at once. */
+    uint32_t nr_active_zones;       /**< Current number of active zones. */
+    uint32_t nr_zones;              /**< Total number of zones availible. */
+    uint64_t max_zone_chunks;       /**< Maximum number of chunks a zone can hold. */
+    size_t chunk_sz;                /**< Size of each chunk in bytes. */
+    uint64_t zone_cap;              /**< Maximum storage capacity per zone in bytes. */
+
+    // Cache structures
+    GQueue *lru_queue;              /**< Least Recently Used (LRU) queue for zone eviction. */
+    GMutex cache_lock;              /**< Mutex to protect cache operations. */
+    GHashTable *zone_map;           /**< Hash table mapping data IDs to `ze_pair` entries in the LRU queue. */
+
+    // Free/active zone management
+    GQueue *free_list;              /**< Queue of zones that are currently free and available for allocation. */
+    GQueue *active_queue;           /**< Queue of zones that are currently active and in use. */
+    enum ze_zone_state *zone_state; /**< Array representing the state of each zone. */
+
+    struct ze_reader reader;        /**< Reader structure for tracking workload location. */
 };
 
+/**
+ * @struct ze_thread_data
+ * @brief Holds thread-specific data for interacting with the cache.
+ *
+ * This structure associates a thread with a specific cache instance
+ * and provides a unique thread identifier.
+ */
 struct ze_thread_data {
-    struct ze_cache *cache;
-    uint32_t tid;
+    struct ze_cache *cache; /**< Pointer to the cache instance associated with this thread. */
+    uint32_t tid; /**< Unique identifier for the thread. */
 };
 
+/**
+ * @brief Generates a buffer filled with random bytes.
+ *
+ * This function allocates a buffer of the specified size and fills it with
+ * random values ranging from 0 to 255. The random number generator is seeded
+ * with a predefined value (`SEED`), which may result in deterministic output
+ * unless `SEED` is properly randomized elsewhere.
+ *
+ * @param size The number of bytes to allocate and populate with random values.
+ * @return A pointer to the allocated buffer containing random bytes, or NULL
+ *         if allocation fails or size is zero.
+ *
+ * @note The caller is responsible for freeing the allocated buffer.
+ */
 static unsigned char *
 generate_random_buffer(size_t size) {
     if (size == 0) {
@@ -105,7 +157,7 @@ nomem() {
 }
 
 /**
- * Uniform rand with limit
+ * @brief Uniform rand with limit
  *
  * return a random number between 0 and limit inclusive.
  *
@@ -124,7 +176,14 @@ rand_lim(int limit) {
 }
 
 /**
- * Cite: https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
+ * @brief Prints information about a Zoned Block Device (ZBD).
+ *
+ * This function outputs detailed information about a given `zbd_info` structure,
+ * including vendor details, sector counts, zone properties, and model type.
+ *
+ * @param info Pointer to a `struct zbd_info` containing ZBD details.
+ *
+ * @cite https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
  */
 [[maybe_unused]] static void
 print_zbd_info(struct zbd_info *info) {
@@ -143,7 +202,7 @@ print_zbd_info(struct zbd_info *info) {
 }
 
 /**
- * Get zone capacity
+ * @brief Get zone capacity
  *
  * @param[in] fd open zone file descriptor
  * @param[out] zone_cap zone capacity
@@ -164,6 +223,18 @@ zone_cap(int fd, uint64_t *zone_capacity) {
 }
 
 #ifdef VERIFY
+/**
+ * @brief Verifies the integrity of a `ze_cache` structure using assertions.
+ *
+ * This function checks whether essential components of the `ze_cache` structure
+ * are properly initialized. If any assertion fails, the program will terminate,
+ * ensuring that the cache is in a valid state before proceeding.
+ *
+ * @param zam Pointer to the `ze_cache` structure to validate.
+ *
+ * @note This function is only enabled when `VERIFY` is defined. If `VERIFY` is not
+ *       defined, `VERIFY_ZE_CACHE(ptr)` does nothing.
+ */
 static void
 check_assertions_ze_cache(struct ze_cache * zam) {
     // Asserts should always pass
@@ -175,6 +246,16 @@ check_assertions_ze_cache(struct ze_cache * zam) {
     assert(zam->free_list != NULL);
     assert(zam->fd > 0);
 }
+
+/**
+ * @brief Macro to invoke `check_assertions_ze_cache` when `VERIFY` is defined.
+ *
+ * This macro calls `check_assertions_ze_cache(ptr)`, ensuring that the provided
+ * `ze_cache` instance is in a valid state. When `VERIFY` is not defined, this
+ * macro does nothing.
+ *
+ * @param ptr Pointer to the `ze_cache` structure to verify.
+ */
 #define VERIFY_ZE_CACHE(ptr) check_assertions_ze_cache(ptr)
 #else
 #define VERIFY_ZE_CACHE(ptr) // Do nothing
@@ -191,6 +272,18 @@ ze_print_cache(struct ze_cache * cache) {
 #endif
 }
 
+/**
+ * @brief Initializes the free list for the cache zones.
+ *
+ * This function allocates a new queue to manage free zones and populates it
+ * with all available zone indices. If memory allocation fails, it invokes
+ * `nomem()` to handle the error.
+ *
+ * @param cache Pointer to the `ze_cache` structure whose free list is being initialized.
+ *
+ * @note The function assumes that `cache->nr_zones` is set before calling it.
+ *       Each zone index is stored as a pointer using `GINT_TO_POINTER(i)`.
+ */
 static void
 ze_init_free_list(struct ze_cache * cache) {
     cache->free_list = g_queue_new();
@@ -202,6 +295,19 @@ ze_init_free_list(struct ze_cache * cache) {
     }
 }
 
+/**
+ * @brief Initializes a `ze_cache` structure with the given parameters.
+ *
+ * This function sets up the cache by initializing its fields, creating the required
+ * data structures (hash table, queues, state array), and setting up synchronization
+ * mechanisms. It also verifies the integrity of the initialized cache.
+ *
+ * @param cache Pointer to the `ze_cache` structure to initialize.
+ * @param info Pointer to `zbd_info` providing zone details.
+ * @param chunk_sz The size of each chunk in bytes.
+ * @param zone_cap The maximum capacity per zone in bytes.
+ * @param fd File descriptor associated with the disk
+ */
 static void
 ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap, int fd) {
     cache->fd = fd;
@@ -251,11 +357,23 @@ ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, u
     g_mutex_init(&cache->reader.lock);
     cache->reader.query_index = 0;
     cache->reader.workload_index = 0;
-    cache->reader.repeat_number = 1;
 
     VERIFY_ZE_CACHE(cache);
 }
 
+/**
+ * @brief Destroys and cleans up a `ze_cache` structure.
+ *
+ * This function frees all dynamically allocated resources associated with the cache,
+ * including hash tables, queues, and state arrays. It also closes the file descriptor
+ * and clears associated mutexes to ensure proper cleanup.
+ *
+ * @param zam Pointer to the `ze_cache` structure to be destroyed.
+ *
+ * @note After calling this function, the `ze_cache` structure should not be used
+ *       unless it is reinitialized.
+ * @note The function assumes that `zam` is properly initialized before being passed.
+ */
 static void
 ze_destroy_cache(struct ze_cache * zam) {
     g_hash_table_destroy(zam->zone_map);
