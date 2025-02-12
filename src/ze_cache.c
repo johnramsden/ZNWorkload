@@ -13,12 +13,13 @@
 #define SEED 42
 
 // No evict
-#define NR_WORKLOADS 2
+#define NR_WORKLOADS 4
 #define NR_QUERY 20
-#define NR_REPEAT_WORKLOAD 2
 
 uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+    {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
     {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
 };
 
@@ -180,71 +181,79 @@ check_assertions_ze_cache(struct ze_cache * zam) {
 #endif
 
 static void
-ze_print_cache(struct ze_cache * zam) {
-    (void)zam;
+ze_print_cache(struct ze_cache * cache) {
+    (void)cache;
 #ifdef DEBUG
-        printf("\tchunk_sz=%lu\n", zam->chunk_sz);
-        printf("\tnr_zones=%u\n", zam->nr_zones);
-        printf("\tzone_cap=%" PRIu64 "\n", zam->zone_cap);
-        printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
+        printf("\tchunk_sz=%lu\n", cache->chunk_sz);
+        printf("\tnr_zones=%u\n", cache->nr_zones);
+        printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
+        printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
 #endif
 }
 
 static void
-ze_init_cache(struct ze_cache * zam, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap, int fd) {
-    zam->fd = fd;
-    zam->chunk_sz = chunk_sz;
-    zam->nr_zones = info->nr_zones;
-    zam->zone_cap = zone_cap;
-    zam->max_nr_active_zones = info->max_nr_active_zones;
-    zam->nr_active_zones = 0;
-    zam->zone_cap = zone_cap;
-    zam->max_zone_chunks = zone_cap / chunk_sz;
+ze_init_free_list(struct ze_cache * cache) {
+    cache->free_list = g_queue_new();
+    if (cache->free_list == NULL) {
+        nomem();
+    }
+    for (uint32_t i = 0; i < cache->nr_zones; i++) {
+        g_queue_push_tail(cache->free_list, GINT_TO_POINTER(i));
+    }
+}
+
+static void
+ze_init_cache(struct ze_cache * cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap, int fd) {
+    cache->fd = fd;
+    cache->chunk_sz = chunk_sz;
+    cache->nr_zones = info->nr_zones;
+    cache->zone_cap = zone_cap;
+    cache->max_nr_active_zones = info->max_nr_active_zones;
+    cache->nr_active_zones = 0;
+    cache->zone_cap = zone_cap;
+    cache->max_zone_chunks = zone_cap / chunk_sz;
 
 #ifdef DEBUG
         printf("Initialized cache:\n");
-        printf("\tchunk_sz=%lu\n", zam->chunk_sz);
-        printf("\tnr_zones=%u\n", zam->nr_zones);
-        printf("\tzone_cap=%" PRIu64 "\n", zam->zone_cap);
-        printf("\tmax_zone_chunks=%" PRIu64 "\n", zam->max_zone_chunks);
-        printf("\tmax_nr_active_zones=%" PRIu64 "\n", zam->max_nr_active_zones);
+        printf("\tchunk_sz=%lu\n", cache->chunk_sz);
+        printf("\tnr_zones=%u\n", cache->nr_zones);
+        printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
+        printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
+        printf("\tmax_nr_active_zones=%" PRIu64 "\n", cache->max_nr_active_zones);
 #endif
 
     // Create a hash table with integer keys and values
-    zam->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
-    if (zam->zone_map == NULL) {
+    cache->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
+    if (cache->zone_map == NULL) {
         nomem();
     }
 
     // Init lists:
 
-    zam->zone_state = g_new0(enum ze_zone_state, zam->nr_zones);
-    if (zam->zone_state == NULL) {
+    cache->zone_state = g_new0(enum ze_zone_state, cache->nr_zones);
+    if (cache->zone_state == NULL) {
          nomem();
     }
 
-    zam->lru_queue = g_queue_new();
-    if (zam->lru_queue == NULL) {
+    cache->lru_queue = g_queue_new();
+    if (cache->lru_queue == NULL) {
          nomem();
     }
 
-    zam->active_queue = g_queue_new();
-    if (zam->active_queue == NULL) {
+    cache->active_queue = g_queue_new();
+    if (cache->active_queue == NULL) {
          nomem();
     }
     
-    zam->free_list = g_queue_new();
-    if (zam->free_list == NULL) {
-         nomem();
-    }
+    ze_init_free_list(cache);
 
-    g_mutex_init(&zam->cache_lock);
-    g_mutex_init(&zam->reader.lock);
-    zam->reader.query_index = 0;
-    zam->reader.workload_index = 0;
-    zam->reader.repeat_number = 1;
+    g_mutex_init(&cache->cache_lock);
+    g_mutex_init(&cache->reader.lock);
+    cache->reader.query_index = 0;
+    cache->reader.workload_index = 0;
+    cache->reader.repeat_number = 1;
 
-    VERIFY_ZE_CACHE(zam);
+    VERIFY_ZE_CACHE(cache);
 }
 
 static void
@@ -260,8 +269,8 @@ ze_destroy_cache(struct ze_cache * zam) {
     g_mutex_clear(&zam->reader.lock);
 }
 
-static int
-ze_cache_get(struct ze_cache * zam, uint32_t id) {
+static void
+ze_cache_get(struct ze_cache * zam, const uint32_t id) {
     VERIFY_ZE_CACHE(zam);
 
     g_mutex_lock(&zam->cache_lock);
@@ -269,8 +278,11 @@ ze_cache_get(struct ze_cache * zam, uint32_t id) {
     if (g_hash_table_contains(zam->zone_map, GINT_TO_POINTER(id))) {
         printf("Cache ID %u in cache\n", id);
     } else {
-        printf("Cache ID not %u in cache\n", id);
+        printf("Cache ID %u not in cache\n", id);
         struct ze_pair *zp = g_new(struct ze_pair, 1);
+        if (zp == NULL) {
+            nomem();
+        }
         zp->zone = 1;
         zp->chunk_offset = 2;
         g_hash_table_insert(zam->zone_map, GINT_TO_POINTER(id), zp);
@@ -287,33 +299,26 @@ void task_function(gpointer data, gpointer user_data) {
     printf("Task %d started by thread %p\n", thread_data->tid, g_thread_self());
     // ze_print_cache(thread_data->cache);
     while (true) {
-        uint32_t qi;
-        uint32_t wi;
         g_mutex_lock(&thread_data->cache->reader.lock);
+
+        // When we exceed Query number, go next workload
         if (thread_data->cache->reader.query_index >= NR_QUERY) {
             thread_data->cache->reader.query_index = 0;
-
-            if (thread_data->cache->reader.repeat_number < NR_REPEAT_WORKLOAD) {
-                thread_data->cache->reader.repeat_number++;
-            } else {
-                thread_data->cache->reader.repeat_number = 1;
-                thread_data->cache->reader.workload_index++;
-            }
-
-            if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
-                g_mutex_unlock(&thread_data->cache->reader.lock);
-                break;
-            }
+            thread_data->cache->reader.workload_index++;
+        }
+        if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
+            g_mutex_unlock(&thread_data->cache->reader.lock);
+            break;
         }
 
-        // Assertions to validate state
-        assert(thread_data->cache->reader.repeat_number <= NR_REPEAT_WORKLOAD);
-        assert(thread_data->cache->reader.query_index < NR_QUERY);
-        assert(thread_data->cache->reader.workload_index < NR_WORKLOADS);
-
-        qi = thread_data->cache->reader.query_index++;
-        wi = thread_data->cache->reader.workload_index;
+        uint32_t qi = thread_data->cache->reader.query_index++;
+        uint32_t wi = thread_data->cache->reader.workload_index;
         g_mutex_unlock(&thread_data->cache->reader.lock);
+
+        // Assertions to validate state
+        assert(qi < NR_QUERY);
+        assert(wi < NR_WORKLOADS);
+
         ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
         printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi, simple_workload[wi][qi]);
     }
