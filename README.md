@@ -23,6 +23,18 @@ meson setup buildDir
 meson compile -C buildDir
 ```
 
+There are two variables that can be set:
+
+* `DEBUG`: Enables debug output (default true)
+* `VERIFY`: Enables correctness verification (default true)
+
+To modify these:
+
+```shell
+meson setup --reconfigure buildDir -Dverify=false -Ddebugging=false
+meson compile -C buildDir
+```
+
 ## Testing and Development
 
 Create an emulated ZNS device via `scripts/nullblk-zones.sh` with:
@@ -75,3 +87,11 @@ doxygen Doxyfile
 ```
 
 Open `docs/html/index.html` in a browser.
+
+### Formatting
+
+Run `clang-format`:
+
+```shell
+clang-format -i src/ze_cache.c
+```
