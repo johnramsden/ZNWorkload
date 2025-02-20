@@ -160,6 +160,7 @@ struct ze_cache {
 struct ze_thread_data {
     struct ze_cache *cache; /**< Pointer to the cache instance associated with this thread. */
     uint32_t tid;           /**< Unique identifier for the thread. */
+    bool done;              /**< Marks completed */
 };
 
 /**
@@ -868,6 +869,29 @@ validate_ze_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
     return 0;
 }
 
+/**
+ * Eviction thread
+ *
+ * @param user_data thread_data
+ * @return
+ */
+gpointer
+evict_task(gpointer user_data) {
+    struct ze_thread_data *thread_data = user_data;
+
+    printf("Evict task started by thread %p\n", (void *) g_thread_self());
+
+    while (true) {
+        if (thread_data->done) {
+            break;
+        }
+    }
+
+    printf("Evict task completed by thread %p\n", (void *) g_thread_self());
+
+    return NULL;
+}
+
 // Task function. The function that each thread runs. This will simulate servicing cache requests. 
 // @param data 
 void
@@ -1003,10 +1027,8 @@ main(int argc, char **argv) {
         nomem();
     }
 
-    printf("Zone cap: %ld\n", zone_capacity);
-
-    struct ze_cache zam = {0};
-    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd, ZE_EVICT_ZONE, device_type);
+    struct ze_cache cache = {0};
+    ze_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, ZE_EVICT_ZONE, device_type);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
@@ -1020,7 +1042,7 @@ main(int argc, char **argv) {
     struct ze_thread_data *thread_data = g_new(struct ze_thread_data, nr_threads);
     for (int i = 0; i < nr_threads; i++) {
         thread_data[i].tid = i;
-        thread_data[i].cache = &zam;
+        thread_data[i].cache = &cache;
         g_thread_pool_push(pool, &thread_data[i], &error);
         if (error) {
             fprintf(stderr, "Error pushing task: %s\n", error->message);
@@ -1028,11 +1050,27 @@ main(int argc, char **argv) {
         }
     }
 
+    // Setup eviction thread
+    struct ze_thread_data eviction_thread_data = {
+        .tid = 0, .cache = &cache, .done = false
+    };
+
+    GThread *thread = g_thread_new(
+        "evict-thread",
+        evict_task,
+        &eviction_thread_data
+    );
+
     // Wait for tasks to finish and free the thread pool
     g_thread_pool_free(pool, FALSE, TRUE);
 
+    // Notify GC thread we are done
+    eviction_thread_data.done = true;
+
+    g_thread_join(thread);
+
     // Cleanup
-    ze_destroy_cache(&zam);
+    ze_destroy_cache(&cache);
     g_free(thread_data);
     free(RANDOM_DATA);
     return 0;
