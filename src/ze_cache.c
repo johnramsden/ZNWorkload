@@ -724,15 +724,18 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
  *
  * @param cache Pointer to the `ze_cache` structure.
  * @param zone_id Zone id to allocate `ze_pair` from
+ * @param id UID to map to `ze_pair`
  * @return ze_pair (backed by zone_pool, do not free as caller)
  */
 static struct ze_pair *
-ze_get_next_ze_pair(struct ze_cache * cache, uint32_t zone_id) {
+ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const uint32_t id) {
     struct ze_pair * zp;
     uint32_t chunk_offset = cache->zone_state[zone_id].chunk_loc;
     zp = &cache->zone_pool[zone_id][chunk_offset];
     zp->zone = zone_id;
     zp->chunk_offset = chunk_offset;
+    zp->in_use = true;
+    zp->id = id;
     return zp;
 }
 
@@ -769,7 +772,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
             return NULL;
         }
 
-        struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id);
+        struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id, id);
 
         data = ze_gen_write_buffer(cache, id);
         unsigned long long wp =
