@@ -141,7 +141,8 @@ struct ze_cache {
     // Cache structures
     GQueue *lru_queue;    /**< Least Recently Used (LRU) queue for zone eviction. */
     GMutex cache_lock;    /**< Mutex to protect cache operations. */
-    GHashTable *zone_map; /**< Hash table mapping data IDs to `ze_pair` entries in the LRU queue. */
+    GHashTable *zone_map; /**< Hash table mapping data IDs to `ze_pair` entries in a zone_pool. */
+    GHashTable *zone_to_lru_map; /**< Hash table mapping zones to locations in the LRU queue. */
 
     // Free/active zone management
     GQueue *free_list; /**< Queue of zones that are currently free and available for allocation. */
@@ -329,6 +330,7 @@ static void
 check_assertions_ze_cache(struct ze_cache *cache) {
     assert(cache != NULL);
     assert(cache->zone_map != NULL);
+    assert(cache->zone_to_lru_map != NULL);
     assert(cache->zone_state != NULL);
     assert(cache->active_queue != NULL);
     assert(cache->lru_queue != NULL);
@@ -459,10 +461,19 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     printf("\tmax_nr_active_zones=%u\n", cache->max_nr_active_zones);
 #endif
 
-    // Create a hash table with integer keys and values
+    // Create a hash table with integer keys and struct values
     cache->zone_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     if (cache->zone_map == NULL) {
         nomem();
+    }
+    // Create a hash table with integer keys and lru_queue address values
+    cache->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+    if (cache->zone_map == NULL) {
+        nomem();
+    }
+    // Set all mappings NULL
+    for (uint32_t i = 0; i < cache->nr_zones; i++) {
+        g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(i), NULL);
     }
 
     // Init lists
@@ -523,7 +534,9 @@ ze_destroy_cache(struct ze_cache *cache) {
     g_hash_table_destroy(cache->zone_map);
     g_free(cache->zone_state);
     g_queue_free_full(cache->active_queue, g_free);
-    g_queue_free_full(cache->lru_queue, g_free);
+    g_queue_free(cache->lru_queue);
+
+    // TODO: MISSING FREES
 
     if(cache->backend == ZE_BACKEND_ZNS) {
         zbd_close(cache->fd);
@@ -769,6 +782,29 @@ ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const
     return zp;
 }
 
+static void
+ze_update_lru(struct ze_cache *cache, struct ze_pair *zp) {
+    GList* node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
+    if (node == NULL) {
+        // Not in LRU
+        g_queue_push_head(cache->lru_queue, GINT_TO_POINTER(zp->zone));
+        // Add mapping
+        node = g_queue_peek_head_link(cache->lru_queue);
+        g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone), node);
+
+        dbg_print_g_queue("lru_queue", cache->lru_queue);
+        return;
+    }
+
+    // In LRU, just update
+    // Extract the data from the node
+    gpointer data = node->data;
+    // Remove the node from the queue
+    g_queue_delete_link(cache->lru_queue, node);
+    g_queue_push_head(cache->lru_queue, data);
+    dbg_print_g_queue("lru_queue", cache->lru_queue);
+}
+
 /**
  * @brief Get data from cache
  *
@@ -794,6 +830,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         dbg_printf("Cache ID %u in cache at zone_pointer [%u,%u]\n", id, zp->zone,
                    zp->chunk_offset);
         data = ze_read_from_disk(cache, zp);
+        ze_update_lru(cache, zp);
     } else {
 
         // Not in cache. Emulates pulling in data from a remote source by filling in a cache entry with random bytes
@@ -823,6 +860,9 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
         // Associate the data id with the location on disk
         g_hash_table_insert(cache->zone_map, id_ptr, zp);
+
+        ze_update_lru(cache, zp);
+
         // dbg_print_g_hash_table("zone_map", cache->zone_map);
         cache->zone_state[zp->zone].chunk_loc++;
 
@@ -834,7 +874,6 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
                 g_mutex_unlock(&cache->cache_lock);
                 return NULL;
             }
-            // TODO: Add to LRU queue?
             g_mutex_unlock(&cache->cache_lock);
             return data;
         }
@@ -875,6 +914,19 @@ validate_ze_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
     return 0;
 }
 
+static int
+ze_evict(struct ze_cache *cache, uint32_t free_zones) {
+    // TODO: Evict
+    // uint32_t num_evict = EVICT_LOW_THRESH-free_zones;
+    //
+    // for (uint32_t i = 0; i < num_evict;) {
+    //     uint32_t zone = GPOINTER_TO_UINT(g_queue_pop_tail(cache->lru_queue));
+    //     if (cache->zone_state[zone].zone_state == ZE_ZONE_FULL) {
+    //
+    //     }
+    // }
+}
+
 /**
  * Eviction thread
  *
@@ -902,6 +954,9 @@ evict_task(gpointer user_data) {
             g_usleep(EVICT_SLEEP_US);
             continue;
         }
+
+        // TODO: Errors
+        (void)ze_evict(thread_data->cache, free_zones);
 
 
         g_mutex_unlock(&thread_data->cache->cache_lock);
