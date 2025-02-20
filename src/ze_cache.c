@@ -14,11 +14,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <linux/fs.h>
+#include <stdint.h>
+#include <sys/ioctl.h>
 
 #define SEED 42
 
 #define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
+
+#define BLOCK_ZONE_CAPACITY ((long)1077 * 1024 * 1024)
 
 // No evict
 #define NR_WORKLOADS 4
@@ -133,6 +138,7 @@ struct ze_cache {
 
     // Free/active zone management
     GQueue *free_list; /**< Queue of zones that are currently free and available for allocation. */
+    // Zones that have some space and are still active
     GQueue *active_queue; /**< Queue of zones that are currently active and in use. */
 
     struct ze_pair **zone_pool; /**< Pool of zone pairs */
@@ -511,7 +517,11 @@ ze_destroy_cache(struct ze_cache *cache) {
     g_queue_free_full(cache->active_queue, g_free);
     g_queue_free_full(cache->lru_queue, g_free);
 
-    zbd_close(cache->fd);
+    if(cache->backend == ZE_BACKEND_ZNS) {
+        zbd_close(cache->fd);
+    } else {
+        close(cache->fd);
+    }
 
     g_mutex_clear(&cache->cache_lock);
     g_mutex_clear(&cache->reader.lock);
@@ -568,10 +578,18 @@ ze_open_zone(struct ze_cache *cache, uint32_t zone_id) {
 
     unsigned long long wp = CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, 0, zone_id);
     dbg_printf("Opening zone %u, zone pointer %llu\n", zone_id, wp);
-    int ret = zbd_open_zones(cache->fd, wp, 1);
-    if (ret != 0) {
-        return ret;
+    
+    int ret;
+    if (cache->backend == ZE_BACKEND_ZNS) {
+        ret = zbd_open_zones(cache->fd, wp, 1);
+        if (ret != 0) {
+            return ret;
+        }   
+    } else {
+        // We don't have to do anything with block devices
+        ret = 0;
     }
+    
     cache->nr_active_zones++;
     cache->zone_state[zone_id].zone_state = ZE_ZONE_ACTIVE;
     cache->zone_state[zone_id].chunk_loc = 0;
@@ -623,12 +641,13 @@ ze_close_zone(struct ze_cache *cache, uint32_t zone_id) {
 }
 
 /**
- * @brief Get active zone
+ * @brief Get an active zone. If there are no active zones, create a new one from a free zone.
  *
  * @param cache Pointer to the `ze_cache` structure, caller is responsible for locking
- * @return Free zone Id, if no free zones return -1
+ * @param[out] The requested zone Id if successful
+ * @return Status code. 0 for success and -1 for failures.
  *
- * TODO: Foreground GC if needed
+ * TODO: Foreground GC if needed (When we are completely full)
  */
 static int
 ze_get_active_zone(struct ze_cache *cache, uint32_t *zone_id) {
@@ -646,12 +665,14 @@ ze_get_active_zone(struct ze_cache *cache, uint32_t *zone_id) {
         return -1;
     }
 
+    // Use an existing active zone
     if (!active_q_empty) {
         dbg_print_g_queue("active,queue", cache->active_queue);
         *zone_id = GPOINTER_TO_INT(g_queue_pop_head(cache->active_queue));
         return 0;
     }
 
+    // No active zones, get a new one
     if (cache->nr_active_zones < cache->max_nr_active_zones) {
         *zone_id = GPOINTER_TO_INT(g_queue_pop_head(cache->free_list));
         int ret = ze_open_zone(cache, *zone_id);
@@ -714,6 +735,7 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
     }
 
     memcpy(data, RANDOM_DATA, cache->chunk_sz);
+    // Metadata
     memcpy(data, &zone_id, sizeof(uint32_t));
 
     return data;
@@ -756,6 +778,8 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
     g_mutex_lock(&cache->cache_lock);
 
     VERIFY_ZE_CACHE(cache);
+
+    // In cache. Read the data
     if (g_hash_table_contains(cache->zone_map, id_ptr)) {
         struct ze_pair *zp;
         zp = g_hash_table_lookup(cache->zone_map, id_ptr);
@@ -763,8 +787,11 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
                    zp->chunk_offset);
         data = ze_read_from_disk(cache, zp);
     } else {
+
+        // Not in cache. Emulates pulling in data from a remote source by filling in a cache entry with random bytes
         dbg_printf("Cache ID %u not in cache\n", id);
         uint32_t zone_id;
+        // Get an active zone and its free chunk
         int ret = ze_get_active_zone(cache, &zone_id);
         if (ret != 0) {
             dbg_printf("Failed to get active zone\n");
@@ -775,6 +802,8 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id, id);
 
         data = ze_gen_write_buffer(cache, id);
+
+        // Write buffer to disk, 4kb blocks at a time
         unsigned long long wp =
             CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, zp->chunk_offset, zp->zone);
         if (ze_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
@@ -783,9 +812,13 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
             g_mutex_unlock(&cache->cache_lock);
             return NULL;
         }
+
+        // Associate the data id with the location on disk
         g_hash_table_insert(cache->zone_map, id_ptr, zp);
         // dbg_print_g_hash_table("zone_map", cache->zone_map);
         cache->zone_state[zp->zone].chunk_loc++;
+
+        // Full, close the zone now
         if (cache->zone_state[zp->zone].chunk_loc >= cache->max_zone_chunks) {
             if (ze_close_zone(cache, zp->zone) != 0) {
                 dbg_printf("Couldn't close zone %u\n", zp->zone);
@@ -797,6 +830,9 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
             g_mutex_unlock(&cache->cache_lock);
             return data;
         }
+
+        // Probably this is to reduce lock contention. To allow writes to different zones at once
+        // But needs finer-grained locks
         g_queue_push_tail(cache->active_queue, GINT_TO_POINTER(zp->zone)); // Make zone avail again
         dbg_print_g_queue("active_queue", cache->active_queue);
     }
@@ -831,7 +867,8 @@ validate_ze_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
     return 0;
 }
 
-// Task function
+// Task function. The function that each thread runs. This will simulate servicing cache requests. 
+// @param data 
 void
 task_function(gpointer data, gpointer user_data) {
     (void) user_data;
@@ -839,19 +876,25 @@ task_function(gpointer data, gpointer user_data) {
 
     printf("Task %d started by thread %p\n", thread_data->tid, (void *) g_thread_self());
     // ze_print_cache(thread_data->cache);
+
+    // Handles any cache read requests
     while (true) {
         g_mutex_lock(&thread_data->cache->reader.lock);
 
         // When we exceed Query number, go next workload
+        // The query that we're on
         if (thread_data->cache->reader.query_index >= NR_QUERY) {
             thread_data->cache->reader.query_index = 0;
             thread_data->cache->reader.workload_index++;
         }
+
+        // We finished reading all the workloads
         if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
             g_mutex_unlock(&thread_data->cache->reader.lock);
             break;
         }
 
+        // Increment the query index
         uint32_t qi = thread_data->cache->reader.query_index++;
         uint32_t wi = thread_data->cache->reader.workload_index;
         g_mutex_unlock(&thread_data->cache->reader.lock);
@@ -860,6 +903,7 @@ task_function(gpointer data, gpointer user_data) {
         assert(qi < NR_QUERY);
         assert(wi < NR_WORKLOADS);
 
+        // Find the data in the cache
         unsigned char *data = ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data\n");
@@ -890,17 +934,22 @@ main(int argc, char **argv) {
     }
 
     char *device = argv[1];
-
+    enum ze_backend device_type = zbd_device_is_zoned(device)?
+                                  ZE_BACKEND_ZNS :
+                                  ZE_BACKEND_BLOCK;
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
 
     printf("Running with configuration:\n"
            "\tDevice name: %s\n"
+           "\tDevice type: %s\n"
            "\tChunk size: %lu\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n",
-           device, chunk_sz, nr_threads, nr_eviction_threads);
+           device, (device_type == ZE_BACKEND_ZNS)?
+                   "ZNS" : "Block",
+           chunk_sz, nr_threads, nr_eviction_threads);
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -909,33 +958,61 @@ main(int argc, char **argv) {
     printf("\tVERIFY=on\n");
 #endif
 
-    struct zbd_info info;
-    int fd = zbd_open(device, O_RDWR, &info);
+    struct zbd_info info = {0};
+    int fd;
+    if (device_type == ZE_BACKEND_ZNS) {
+        fd = zbd_open(device, O_RDWR, &info);
+
+        printf("nr_zones: %u\n", info.nr_zones);
+        printf("max_nr_active_zones: %d\n", info.max_nr_active_zones);      
+
+    } else {
+        fd = open(device, O_RDWR);
+
+        uint64_t size = 0;
+        if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
+            fprintf(stderr, "Couldn't get block size: %s\n", device);
+            return -1;
+        }
+
+        info.nr_zones = ((long)size / BLOCK_ZONE_CAPACITY);
+        info.max_nr_active_zones = 0;
+
+        printf("nr_zones: %u\n", info.nr_zones);
+        printf("max_nr_active_zones: %d\n", info.max_nr_active_zones);
+    }
+    
     if (fd < 0) {
         fprintf(stderr, "Error opening device: %s\n", device);
         return fd;
     }
 
-    int ret = zbd_reset_zones(fd, 0, 0);
-    if (ret != 0) {
-        fprintf(stderr, "Couldn't reset zones\n");
-        return -1;
-    }
+    uint64_t zone_capacity = 0;
+    if (device_type == ZE_BACKEND_ZNS) {
+        int ret = zbd_reset_zones(fd, 0, 0);
+        if (ret != 0) {
+            fprintf(stderr, "Couldn't reset zones\n");
+            return -1;
+        }
 
-    uint64_t zone_capacity;
-    ret = zone_cap(fd, &zone_capacity);
-    if (ret != 0) {
-        fprintf(stderr, "Couldn't report zone info\n");
-        return ret;
+        ret = zone_cap(fd, &zone_capacity);
+        if (ret != 0) {
+            fprintf(stderr, "Couldn't report zone info\n");
+            return ret;
+        }
+    } else {
+        zone_capacity = BLOCK_ZONE_CAPACITY;
     }
-
-    struct ze_cache zam = {0};
-    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd, ZE_EVICT_ZONE, ZE_BACKEND_ZNS);
 
     RANDOM_DATA = generate_random_buffer(chunk_sz);
     if (RANDOM_DATA == NULL) {
         nomem();
     }
+
+    printf("Zone cap: %ld\n", zone_capacity);
+
+    struct ze_cache zam = {0};
+    ze_init_cache(&zam, &info, chunk_sz, zone_capacity, fd, ZE_EVICT_ZONE, device_type);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
