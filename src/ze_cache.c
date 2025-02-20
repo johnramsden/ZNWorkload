@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #define SEED 42
 
@@ -52,6 +53,8 @@ unsigned char *RANDOM_DATA = NULL;
 struct ze_pair {
     uint32_t zone;         /**< Identifier of the zone where the data is stored. */
     uint32_t chunk_offset; /**< Offset within the zone where the data chunk is located. */
+    uint32_t id;           /**< Unique ID */
+    bool in_use;           /**< Defines if ze_pair is in use. */
 };
 
 /**
@@ -131,6 +134,8 @@ struct ze_cache {
     // Free/active zone management
     GQueue *free_list; /**< Queue of zones that are currently free and available for allocation. */
     GQueue *active_queue; /**< Queue of zones that are currently active and in use. */
+
+    struct ze_pair **zone_pool; /**< Pool of zone pairs */
 
     enum ze_eviction_policy eviction_policy; /**< Eviction policy. */
     struct ze_zone_state *zone_state;        /**< Array representing the state of each Zone */
@@ -308,7 +313,6 @@ zone_cap(int fd, uint64_t *zone_capacity) {
  */
 static void
 check_assertions_ze_cache(struct ze_cache *cache) {
-    // Asserts should always pass
     assert(cache != NULL);
     assert(cache->zone_map != NULL);
     assert(cache->zone_state != NULL);
@@ -316,6 +320,11 @@ check_assertions_ze_cache(struct ze_cache *cache) {
     assert(cache->lru_queue != NULL);
     assert(cache->free_list != NULL);
     assert(cache->fd > 0);
+
+    assert(cache->zone_pool != NULL);
+    for (uint32_t i = 0; i < cache->nr_zones; i++) {
+        assert(cache->zone_pool[i] != NULL);
+    }
 
     uint32_t zone_state_active = 0, zone_state_free = 0, zone_state_full = 0, zone_state_total = 0;
 
@@ -437,16 +446,29 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 #endif
 
     // Create a hash table with integer keys and values
-    cache->zone_map = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
+    cache->zone_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     if (cache->zone_map == NULL) {
         nomem();
     }
 
-    // Init lists:
-
+    // Init lists
     cache->zone_state = g_new0(struct ze_zone_state, cache->nr_zones);
     if (cache->zone_state == NULL) {
         nomem();
+    }
+
+    cache->zone_pool = g_new0(struct ze_pair *, cache->nr_zones);
+    if (cache->zone_pool == NULL) {
+        nomem();
+    }
+    for (uint32_t i = 0; i < cache->nr_zones; i++) {
+        cache->zone_pool[i] = g_new0(struct ze_pair, cache->max_zone_chunks);
+        if (cache->zone_pool[i] == NULL) {
+            nomem();
+        }
+        for (uint32_t j = 0; j < cache->max_zone_chunks; j++) {
+            cache->zone_pool[i][j].in_use = false;
+        }
     }
 
     cache->lru_queue = g_queue_new();
@@ -698,6 +720,23 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
 }
 
 /**
+ * Get the next available `ze_pair`
+ *
+ * @param cache Pointer to the `ze_cache` structure.
+ * @param zone_id Zone id to allocate `ze_pair` from
+ * @return ze_pair (backed by zone_pool, do not free as caller)
+ */
+static struct ze_pair *
+ze_get_next_ze_pair(struct ze_cache * cache, uint32_t zone_id) {
+    struct ze_pair * zp;
+    uint32_t chunk_offset = cache->zone_state[zone_id].chunk_loc;
+    zp = &cache->zone_pool[zone_id][chunk_offset];
+    zp->zone = zone_id;
+    zp->chunk_offset = chunk_offset;
+    return zp;
+}
+
+/**
  * @brief Get data from cache
  *
  * Gets data from cache if present, otherwise pulls from emulated remote
@@ -722,17 +761,16 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         data = ze_read_from_disk(cache, zp);
     } else {
         dbg_printf("Cache ID %u not in cache\n", id);
-        struct ze_pair *zp = g_new(struct ze_pair, 1);
-        if (zp == NULL) {
-            nomem();
-        }
-        int ret = ze_get_active_zone(cache, &zp->zone);
+        uint32_t zone_id;
+        int ret = ze_get_active_zone(cache, &zone_id);
         if (ret != 0) {
             dbg_printf("Failed to get active zone\n");
             g_mutex_unlock(&cache->cache_lock);
             return NULL;
         }
-        zp->chunk_offset = cache->zone_state[zp->zone].chunk_loc;
+
+        struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id);
+
         data = ze_gen_write_buffer(cache, id);
         unsigned long long wp =
             CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, zp->chunk_offset, zp->zone);
