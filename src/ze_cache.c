@@ -20,6 +20,12 @@
 
 #define SEED 42
 
+#define EVICT_HIGH_THRESH 2
+#define EVICT_LOW_THRESH 10
+
+#define MICROSECS_PER_SECOND 1000000
+#define EVICT_SLEEP_US ((long)(0.5 * MICROSECS_PER_SECOND))
+
 #define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
 
@@ -885,6 +891,20 @@ evict_task(gpointer user_data) {
         if (thread_data->done) {
             break;
         }
+
+        g_mutex_lock(&thread_data->cache->cache_lock);
+
+        uint32_t free_zones = g_queue_get_length(thread_data->cache->free_list);
+        if (free_zones > EVICT_HIGH_THRESH) {
+            // Not at mark, wait
+            dbg_printf("EVICTION: Free zones=%u > %u, not evicting", free_zones, EVICT_HIGH_THRESH);
+            g_mutex_unlock(&thread_data->cache->cache_lock);
+            g_usleep(EVICT_SLEEP_US);
+            continue;
+        }
+
+
+        g_mutex_unlock(&thread_data->cache->cache_lock);
     }
 
     printf("Evict task completed by thread %p\n", (void *) g_thread_self());
