@@ -102,7 +102,8 @@ struct ze_zone_state {
  */
 enum ze_eviction_policy {
     ZE_EVICT_ZONE = 0,  /**< Zone granularity eviction. */
-    ZE_EVICT_CHUNK = 1, /**< Chunk granularity eviction. */
+    ZE_EVICT_PROMOTE_ZONE = 1,  /**< Zone granularity eviction with promotion. */
+    ZE_EVICT_CHUNK = 2, /**< Chunk granularity eviction. */
 };
 /**
  * @enum ze_backend
@@ -962,10 +963,6 @@ main(int argc, char **argv) {
     int fd;
     if (device_type == ZE_BACKEND_ZNS) {
         fd = zbd_open(device, O_RDWR, &info);
-
-        printf("nr_zones: %u\n", info.nr_zones);
-        printf("max_nr_active_zones: %d\n", info.max_nr_active_zones);      
-
     } else {
         fd = open(device, O_RDWR);
 
@@ -977,9 +974,6 @@ main(int argc, char **argv) {
 
         info.nr_zones = ((long)size / BLOCK_ZONE_CAPACITY);
         info.max_nr_active_zones = 0;
-
-        printf("nr_zones: %u\n", info.nr_zones);
-        printf("max_nr_active_zones: %d\n", info.max_nr_active_zones);
     }
     
     if (fd < 0) {
