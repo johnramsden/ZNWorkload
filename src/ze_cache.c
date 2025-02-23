@@ -363,6 +363,7 @@ ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
 
         ze_read_lock(&cache->zone_lock[zone]);
         if (cache->zone_state[zone].zone_state != ZE_ZONE_FULL) {
+            ze_read_unlock(&cache->zone_lock[zone]);
             continue;
         }
         ze_read_unlock(&cache->zone_lock[zone]);
