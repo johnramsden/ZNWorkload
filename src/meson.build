@@ -1,5 +1,5 @@
 # Get the sources
-srcs = files('ze_cache.c', 'ze_rw_lock.c')
+srcs = files('ze_cache.c')
 
 executable(
     'ze_cache',
