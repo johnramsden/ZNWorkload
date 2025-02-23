@@ -2,6 +2,7 @@
 #define _XOPEN_SOURCE 500
 
 #include "ze_cache.h"
+#include "ze_util.h"
 
 #include "libzbd/zbd.h"
 
@@ -17,8 +18,6 @@
 #include <linux/fs.h>
 #include <stdint.h>
 #include <sys/ioctl.h>
-
-#define SEED 42
 
 #define EVICT_HIGH_THRESH 2
 #define EVICT_LOW_THRESH 4
@@ -44,31 +43,6 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
     {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}};
 
 unsigned char *RANDOM_DATA = NULL;
-
-/* Will only print messages (to stdout) when DEBUG is defined */
-#ifdef DEBUG
-#    define dbg_printf(M, ...) printf("%s: " M, __func__, ##__VA_ARGS__)
-#else
-#    define dbg_printf(...)
-#endif
-
-// Get write pointer from (zone, chunk)
-#define CHUNK_POINTER(z_sz, c_sz, c_num, z_num)                                                    \
-    (((uint64_t) (z_sz) * (uint64_t) (z_num)) + ((uint64_t) (c_num) * (uint64_t) (c_sz)))
-
-/**
- * @struct ze_pair
- * @brief Represents a mapping of data to a specific zone and chunk offset.
- *
- * This structure is used to store references to locations within the cache,
- * allowing data to be efficiently retrieved or managed.
- */
-struct ze_pair {
-    uint32_t zone;         /**< Identifier of the zone where the data is stored. */
-    uint32_t chunk_offset; /**< Offset within the zone where the data chunk is located. */
-    uint32_t id;           /**< Unique ID */
-    bool in_use;           /**< Defines if ze_pair is in use. */
-};
 
 /**
  * @struct ze_reader
@@ -172,128 +146,6 @@ struct ze_thread_data {
     uint32_t tid;           /**< Unique identifier for the thread. */
     bool done;              /**< Marks completed */
 };
-
-/**
- * @brief Prints all key-value pairs in a GHashTable.
- *
- * This function assumes that the GHashTable uses integer keys and values
- * stored as GINT_TO_POINTER. The keys are pointers to integers, and
- * the values are stored as integer pointers.
- *
- * @param hash_table A pointer to the GHashTable to print.
- */
-[[maybe_unused]] static void
-print_g_hash_table(char *name, GHashTable *hash_table) {
-    GHashTableIter iter;
-    gpointer key, value;
-
-    printf("hash table %s:\n", name);
-
-    g_hash_table_iter_init(&iter, hash_table);
-    while (g_hash_table_iter_next(&iter, &key, &value)) {
-        struct ze_pair *zp = (struct ze_pair *) value;
-        printf("\tKey: %d, Value: zone=%u, chunk=%u, id=%u, in_use=%s\n", GPOINTER_TO_INT(key), zp->zone,
-               zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
-    }
-}
-
-#ifdef DEBUG
-#    define dbg_print_g_hash_table(name, hash_table) print_g_hash_table(name, hash_table)
-#else
-#    define dbg_print_g_hash_table(...)
-#endif
-
-/**
- * @brief Prints all elements in a GQueue.
- *
- * This function assumes that the GQueue stores integers using GINT_TO_POINTER.
- *
- * @param queue A pointer to the GQueue to print.
- */
-static void
-print_g_queue(char *name, GQueue *queue) {
-    printf("Printing queue %s: ", name);
-    for (GList *node = queue->head; node != NULL; node = node->next) {
-        printf("%d ", GPOINTER_TO_INT(node->data));
-    }
-    puts("");
-}
-
-#ifdef DEBUG
-#    define dbg_print_g_queue(name, queue) print_g_queue(name, queue)
-#else
-#    define dbg_print_g_queue(...)
-#endif
-
-/**
- * @brief Generates a buffer filled with random bytes.
- *
- * This function allocates a buffer of the specified size and fills it with
- * random values ranging from 0 to 255. The random number generator is seeded
- * with a predefined value (`SEED`), which may result in deterministic output
- * unless `SEED` is properly randomized elsewhere.
- *
- * @param size The number of bytes to allocate and populate with random values.
- * @return A pointer to the allocated buffer containing random bytes, or NULL
- *         if allocation fails or size is zero.
- *
- * @note The caller is responsible for freeing the allocated buffer.
- */
-static unsigned char *
-generate_random_buffer(size_t size) {
-    if (size == 0) {
-        return NULL;
-    }
-
-    // Allocate memory for the buffer
-    unsigned char *buffer = (unsigned char *) malloc(size);
-    if (buffer == NULL) {
-        return NULL;
-    }
-
-    srand(SEED);
-
-    for (size_t i = 0; i < size; i++) {
-        buffer[i] = (unsigned char) (rand() % 256); // Random byte (0-255)
-    }
-
-    return buffer;
-}
-
-/**
- * @brief Exit if NOMEM
- */
-static void
-nomem() {
-    fprintf(stderr, "ERROR: No memory\n");
-    exit(ENOMEM);
-}
-
-/**
- * @brief Prints information about a Zoned Block Device (ZBD).
- *
- * This function outputs detailed information about a given `zbd_info` structure,
- * including vendor details, sector counts, zone properties, and model type.
- *
- * @param info Pointer to a `struct zbd_info` containing ZBD details.
- *
- * @cite https://github.com/westerndigitalcorporation/libzbd/blob/master/include/libzbd/zbd.h
- */
-[[maybe_unused]] static void
-print_zbd_info(struct zbd_info *info) {
-    printf("vendor_id=%s\n", info->vendor_id);
-    printf("nr_sectors=%llu\n", info->nr_sectors);
-    printf("nr_lblocks=%llu\n", info->nr_lblocks);
-    printf("nr_pblocks=%llu\n", info->nr_pblocks);
-    printf("zone_size (bytes)=%llu\n", info->zone_size);
-    printf("zone_sectors=%u\n", info->zone_sectors);
-    printf("lblock_size=%u\n", info->lblock_size);
-    printf("pblock_size=%u\n", info->pblock_size);
-    printf("nr_zones=%u\n", info->nr_zones);
-    printf("max_nr_open_zones=%u\n", info->max_nr_open_zones);
-    printf("max_nr_active_zones=%u\n", info->max_nr_active_zones);
-    printf("model=%u\n", info->model);
-}
 
 /**
  * @brief Reset a zone
@@ -983,7 +835,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
  * @return Non-zero on error
  */
 static int
-validate_ze_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
+ze_validate_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
     uint32_t read_id;
     memcpy(&read_id, data, sizeof(uint32_t));
     if (read_id != id) {
@@ -1084,7 +936,7 @@ task_function(gpointer data, gpointer user_data) {
             return;
         }
 #ifdef VERIFY
-        assert(validate_ze_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
+        assert(ze_validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
 #endif
         free(data);
         printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
