@@ -1039,6 +1039,9 @@ main(int argc, char **argv) {
         return 1;
     }
 
+    struct timespec start_time, end_time;
+    TIME_NOW(&start_time);
+
     // Push tasks to the thread pool
     struct ze_thread_data *thread_data = g_new(struct ze_thread_data, nr_threads);
     for (int i = 0; i < nr_threads; i++) {
@@ -1069,6 +1072,10 @@ main(int argc, char **argv) {
     eviction_thread_data.done = true;
 
     g_thread_join(thread);
+
+    TIME_NOW(&end_time);
+
+    dbg_printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time), TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
     ze_destroy_cache(&cache);

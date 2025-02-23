@@ -4,6 +4,7 @@
 #define SEED 42
 
 #include "libzbd/zbd.h"
+
 #include <glib.h>
 
 /* Will only print messages (to stdout) when DEBUG is defined */
@@ -15,7 +16,7 @@
 
 // Get write pointer from (zone, chunk)
 #define CHUNK_POINTER(z_sz, c_sz, c_num, z_num)                                                    \
-(((uint64_t) (z_sz) * (uint64_t) (z_num)) + ((uint64_t) (c_num) * (uint64_t) (c_sz)))
+    (((uint64_t) (z_sz) * (uint64_t) (z_num)) + ((uint64_t) (c_num) * (uint64_t) (c_sz)))
 
 /**
  * @brief Prints all key-value pairs in a GHashTable.
@@ -87,4 +88,23 @@ nomem();
 void
 print_zbd_info(struct zbd_info *info);
 
-#endif //UTIL_H
+// Timing
+
+#define TIME_NOW(_t) (clock_gettime(CLOCK_MONOTONIC, (_t)))
+
+#define TIME_DIFFERENCE_SEC(_start, _end)                                                          \
+    ((_end.tv_sec + _end.tv_nsec / 1.0e9) - (_start.tv_sec + _start.tv_nsec / 1.0e9))
+
+#define TIME_DIFFERENCE_MILLISEC(_start, _end)                                                     \
+    ((_end.tv_nsec / 1.0e6 < _start.tv_nsec / 1.0e6)) ?                                            \
+        ((_end.tv_sec - 1.0 - _start.tv_sec) * 1.0e3 + (_end.tv_nsec / 1.0e6) + 1.0e3 -            \
+         (_start.tv_nsec / 1.0e6)) :                                                               \
+        ((_end.tv_sec - _start.tv_sec) * 1.0e3 + (_end.tv_nsec / 1.0e6) -                          \
+         (_start.tv_nsec / 1.0e6))
+
+#define TIME_DIFFERENCE_NSEC(_start, _end)                                                         \
+    ((_end.tv_nsec < _start.tv_nsec)) ?                                                            \
+        ((_end.tv_sec - 1 - (_start.tv_sec)) * 1e9 + _end.tv_nsec + 1e9 - _start.tv_nsec) :        \
+        ((_end.tv_sec - (_start.tv_sec)) * 1e9 + _end.tv_nsec - _start.tv_nsec)
+
+#endif // UTIL_H

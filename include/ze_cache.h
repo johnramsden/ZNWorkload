@@ -17,4 +17,4 @@ struct ze_pair {
     bool in_use;           /**< Defines if ze_pair is in use. */
 };
 
-#endif //ZONE_EVICT_IDEAL_H
+#endif // ZONE_EVICT_IDEAL_H
