@@ -27,6 +27,16 @@ print_g_queue(char *name, GQueue *queue) {
     puts("");
 }
 
+void
+print_g_queue_chunk_lru(char *name, GQueue *queue) {
+    printf("Printing queue %s: ", name);
+    for (GList *node = queue->head; node != NULL; node = node->next) {
+        struct ze_pair *zp = node->data;
+        printf("(zone=%d, chunk=%d, id=%d, in_use=%s) ", zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+    }
+    puts("");
+}
+
 unsigned char *
 generate_random_buffer(size_t size) {
     if (size == 0) {

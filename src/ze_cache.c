@@ -21,7 +21,8 @@
 
 #define EVICT_HIGH_THRESH 2
 #define EVICT_LOW_THRESH 4
-#define EVICTION_POLICY ZE_EVICT_PROMOTE_ZONE
+#define EVICT_CHUNK_NUM 10
+#define EVICTION_POLICY ZE_EVICT_CHUNK
 
 #define MICROSECS_PER_SECOND 1000000
 #define EVICT_SLEEP_US ((long)(0.5 * MICROSECS_PER_SECOND))
@@ -228,6 +229,40 @@ ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
 }
 
 /**
+ * Eviction function for chunk LRU eviction, invalidates chunks
+ *
+ * @param cache Pointer to the `ze_cache` structure
+ * @param num_evict Number of chunks to evict
+ */
+static void
+ze_chunk_evict(struct ze_cache *cache, uint32_t num_evict)
+{
+    dbg_printf("Executing chunk eviction, num_evict=%u\n", num_evict);
+    for (uint32_t i = 0; i < num_evict; i++) {
+        GList *node = g_queue_peek_tail_link(cache->lru_queue);
+        if (node == NULL) {
+            dbg_printf("No more chunks in LRU queue to evict\n");
+            break;
+        }
+        struct ze_pair *zp = (struct ze_pair *) node->data;
+        dbg_printf("Evicting chunk [id=%u, zone=%u, offset=%u]\n",
+                   zp->id, zp->zone, zp->chunk_offset);
+
+        print_g_queue_chunk_lru("lru_queue", cache->lru_queue);
+
+        g_hash_table_remove(cache->zone_map, GINT_TO_POINTER(zp->id));
+        g_queue_delete_link(cache->lru_queue, node);
+        g_hash_table_remove(cache->zone_to_lru_map, zp);
+
+        print_g_queue_chunk_lru("lru_queue", cache->lru_queue);
+
+        zp->in_use = false;
+    }
+
+    print_g_queue_chunk_lru("lru_queue", cache->lru_queue);
+}
+
+/**
  * @brief Get zone capacity
  *
  * @param[in] fd open zone file descriptor
@@ -406,12 +441,14 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     if (cache->zone_map == NULL) {
         nomem();
     }
+
     // Set all mappings NULL
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(i), NULL);
+    if (cache->eviction_policy == ZE_EVICT_PROMOTE_ZONE) {
+        for (uint32_t i = 0; i < cache->nr_zones; i++) {
+            g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(i), NULL);
+        }
     }
 
-    // Init lists
     cache->zone_state = g_new0(struct ze_zone_state, cache->nr_zones);
     if (cache->zone_state == NULL) {
         nomem();
@@ -428,6 +465,15 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
         }
         for (uint32_t j = 0; j < cache->max_zone_chunks; j++) {
             cache->zone_pool[i][j].in_use = false;
+        }
+    }
+
+    if (cache->eviction_policy == ZE_EVICT_CHUNK) {
+        for (uint32_t z = 0; z < cache->nr_zones; z++) {
+            for (uint32_t c = 0; c < cache->max_zone_chunks; c++) {
+                struct ze_pair *zp = &cache->zone_pool[z][c];
+                g_hash_table_insert(cache->zone_to_lru_map, zp, NULL);
+            }
         }
     }
 
@@ -619,6 +665,10 @@ ze_get_active_zone(struct ze_cache *cache, uint32_t *zone_id) {
         if (cache->eviction_policy == ZE_EVICT_PROMOTE_ZONE) {
             ze_promotional_evict(cache, free_q_empty);
         }
+        else if (cache->eviction_policy == ZE_EVICT_CHUNK) {
+            ze_chunk_evict(cache, 10);
+            // TODO: GC
+        }
     }
 
     // Use an existing active zone
@@ -720,27 +770,55 @@ ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const
     return zp;
 }
 
+/**
+ * Update the LRU based on eviction policy
+ *
+ * @param cache Pointer to the `ze_cache` structure.
+ * @param zp Zone pair to update cache based on
+ */
 static void
 ze_update_lru(struct ze_cache *cache, struct ze_pair *zp) {
-    GList* node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
-    if (node == NULL) {
-        // Not in LRU
-        g_queue_push_head(cache->lru_queue, GINT_TO_POINTER(zp->zone));
-        // Add mapping
-        node = g_queue_peek_head_link(cache->lru_queue);
-        g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone), node);
-
+    if (cache->eviction_policy == ZE_EVICT_CHUNK) {
+        gpointer key = zp;
+        GList *node = g_hash_table_lookup(cache->zone_to_lru_map, key);
+        if (node == NULL) {
+            // Not in LRU
+            g_queue_push_head(cache->lru_queue, zp);
+            // Add mapping
+            node = g_queue_peek_head_link(cache->lru_queue);
+            g_hash_table_insert(cache->zone_to_lru_map, key, node);
+        } else {
+            // In LRU, just update
+            // Extract the data from the node
+            gpointer data = node->data;
+            // Remove the node from the queue
+            g_queue_delete_link(cache->lru_queue, node);
+            g_queue_push_head(cache->lru_queue, data);
+            node = g_queue_peek_head_link(cache->lru_queue);
+            g_hash_table_insert(cache->zone_to_lru_map, key, node);
+        }
+        print_g_queue_chunk_lru("lru_queue", cache->lru_queue);
+    } else if (cache->eviction_policy == ZE_EVICT_PROMOTE_ZONE) {
+        GList* node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
+        if (node == NULL) {
+            // Not in LRU
+            g_queue_push_head(cache->lru_queue, GINT_TO_POINTER(zp->zone));
+            // Add mapping
+            node = g_queue_peek_head_link(cache->lru_queue);
+            g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone), node);
+        } else {
+            // In LRU, just update
+            // Extract the data from the node
+            gpointer data = node->data;
+            // Remove the node from the queue
+            g_queue_delete_link(cache->lru_queue, node);
+            g_queue_push_head(cache->lru_queue, data);
+            node = g_queue_peek_head_link(cache->lru_queue);
+            g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone), node);
+        }
         dbg_print_g_queue("lru_queue", cache->lru_queue);
-        return;
     }
 
-    // In LRU, just update
-    // Extract the data from the node
-    gpointer data = node->data;
-    // Remove the node from the queue
-    g_queue_delete_link(cache->lru_queue, node);
-    g_queue_push_head(cache->lru_queue, data);
-    dbg_print_g_queue("lru_queue", cache->lru_queue);
 }
 
 /**
@@ -856,7 +934,7 @@ ze_validate_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
  * Eviction thread
  *
  * @param user_data thread_data
- * @return
+ * @return NULL
  */
 gpointer
 evict_task(gpointer user_data) {
@@ -884,6 +962,9 @@ evict_task(gpointer user_data) {
         if (thread_data->cache->eviction_policy == ZE_EVICT_PROMOTE_ZONE) {
             ze_promotional_evict(thread_data->cache, free_zones);
         }
+        else if (thread_data->cache->eviction_policy == ZE_EVICT_CHUNK) {
+            ze_chunk_evict(thread_data->cache, EVICT_CHUNK_NUM);
+        }
 
         g_mutex_unlock(&thread_data->cache->cache_lock);
     }
@@ -893,8 +974,12 @@ evict_task(gpointer user_data) {
     return NULL;
 }
 
-// Task function. The function that each thread runs. This will simulate servicing cache requests. 
-// @param data 
+/**
+ * The function that each thread runs. This will simulate servicing cache requests.
+ *
+ * @param data Thread data
+ * @param user_data (empty)
+ */
 void
 task_function(gpointer data, gpointer user_data) {
     (void) user_data;
