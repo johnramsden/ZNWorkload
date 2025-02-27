@@ -53,6 +53,22 @@ print_g_queue(char *name, GQueue *queue);
 #endif
 
 /**
+ * @brief Prints all elements in a lru chunk GQueue.
+ *
+ * This function assumes that the GQueue stores integers using GINT_TO_POINTER.
+ *
+ * @param queue A pointer to the GQueue to print.
+ */
+void
+print_g_queue_chunk_lru(char *name, GQueue *queue);
+
+#ifdef DEBUG
+#    define print_g_queue_chunk_lru(name, queue) print_g_queue_chunk_lru(name, queue)
+#else
+#    define print_g_queue_chunk_lru(...)
+#endif
+
+/**
  * @brief Generates a buffer filled with random bytes.
  *
  * This function allocates a buffer of the specified size and fills it with
