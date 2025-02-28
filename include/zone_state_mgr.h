@@ -2,6 +2,7 @@
 #define ZONE_STATE_MGR_H
 
 #include <stdint.h>
+#include "global.h"
 
 /**
  * @struct zone_state_mgr

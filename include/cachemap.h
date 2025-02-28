@@ -28,6 +28,7 @@ enum cachemap_get_status {
 struct cachemap_get_result {
     enum cachemap_get_status status; /**< The status of this lookup. */
     struct zone_pair zone_pair;      /**< The zone and chunk where the data is stored. */
+    // Cond var...
 };
 
 /**

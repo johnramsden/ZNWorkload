@@ -1,8 +1,8 @@
 # Get the sources
-srcs = files('ze_cache.c', 'ze_util.c')
+srcs = files('zncache.c', 'util.c', 'cachemap.c', 'eviction_policy_mgr.c', 'zone_state_mgr.c')
 
 executable(
-    'ze_cache',
+    'zncache',
     srcs,
     include_directories : inc_dir,
     c_args : cflags,

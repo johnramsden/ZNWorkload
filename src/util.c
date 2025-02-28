@@ -1,5 +1,5 @@
-#include "ze_cache.h"
-#include "ze_util.h"
+#include "global.h"
+#include "util.h"
 
 #include <stdio.h>
 
@@ -12,7 +12,7 @@ print_g_hash_table(char *name, GHashTable *hash_table) {
 
     g_hash_table_iter_init(&iter, hash_table);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
-        struct ze_pair *zp = (struct ze_pair *) value;
+        struct zone_pair *zp = (struct zone_pair *) value;
         printf("\tKey: %d, Value: zone=%u, chunk=%u, id=%u, in_use=%s\n", GPOINTER_TO_INT(key), zp->zone,
                zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
     }

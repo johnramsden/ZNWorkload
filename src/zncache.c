@@ -1,8 +1,8 @@
 // For pread
 #define _XOPEN_SOURCE 500
 
-#include "ze_cache.h"
-#include "ze_util.h"
+#include "global.h"
+#include "util.h"
 
 #include "libzbd/zbd.h"
 
@@ -126,7 +126,7 @@ struct ze_cache {
     // Zones that have some space and are still active
     GQueue *active_queue; /**< Queue of zones that are currently active and in use. */
 
-    struct ze_pair **zone_pool; /**< Pool of zone pairs */
+    struct zone_pair **zone_pool; /**< Pool of zone pairs */
 
     enum ze_eviction_policy eviction_policy; /**< Eviction policy. */
     struct ze_zone_state *zone_state;        /**< Array representing the state of each Zone */
@@ -209,7 +209,7 @@ ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
             continue;
         }
         for (uint32_t chunk = 0; chunk < cache->max_zone_chunks; chunk++) {
-            struct ze_pair *zp = &cache->zone_pool[zone][chunk];
+            struct zone_pair *zp = &cache->zone_pool[zone][chunk];
             assert(zp->in_use);
             zp->in_use = false;
             assert(g_hash_table_remove(cache->zone_map, GINT_TO_POINTER(zp->id)));
@@ -417,12 +417,12 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
         nomem();
     }
 
-    cache->zone_pool = g_new0(struct ze_pair *, cache->nr_zones);
+    cache->zone_pool = g_new0(struct zone_pair *, cache->nr_zones);
     if (cache->zone_pool == NULL) {
         nomem();
     }
     for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        cache->zone_pool[i] = g_new0(struct ze_pair, cache->max_zone_chunks);
+        cache->zone_pool[i] = g_new0(struct zone_pair, cache->max_zone_chunks);
         if (cache->zone_pool[i] == NULL) {
             nomem();
         }
@@ -491,7 +491,7 @@ ze_destroy_cache(struct ze_cache *cache) {
  * @return Buffer read from disk, to be freed by caller
  */
 static unsigned char *
-ze_read_from_disk(struct ze_cache *cache, struct ze_pair *zone_pair) {
+ze_read_from_disk(struct ze_cache *cache, struct zone_pair *zone_pair) {
     unsigned char *data = malloc(cache->chunk_sz);
     if (data == NULL) {
         nomem();
@@ -708,9 +708,9 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
  * @param id UID to map to `ze_pair`
  * @return ze_pair (backed by zone_pool, do not free as caller)
  */
-static struct ze_pair *
+static struct zone_pair *
 ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const uint32_t id) {
-    struct ze_pair * zp;
+    struct zone_pair * zp;
     uint32_t chunk_offset = cache->zone_state[zone_id].chunk_loc;
     zp = &cache->zone_pool[zone_id][chunk_offset];
     zp->zone = zone_id;
@@ -721,7 +721,7 @@ ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const
 }
 
 static void
-ze_update_lru(struct ze_cache *cache, struct ze_pair *zp) {
+ze_update_lru(struct ze_cache *cache, struct zone_pair *zp) {
     GList* node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
     if (node == NULL) {
         // Not in LRU
@@ -763,7 +763,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
     // In cache. Read the data
     if (g_hash_table_contains(cache->zone_map, id_ptr)) {
-        struct ze_pair *zp;
+        struct zone_pair *zp;
         zp = g_hash_table_lookup(cache->zone_map, id_ptr);
         dbg_printf("Cache ID %u in cache at zone_pointer [%u,%u]\n", id, zp->zone,
                    zp->chunk_offset);
@@ -782,7 +782,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
             return NULL;
         }
 
-        struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id, id);
+        struct zone_pair *zp = ze_get_next_ze_pair(cache, zone_id, id);
         // Emulates pulling in data from a remote source by filling in a cache entry with random bytes
         data = ze_gen_write_buffer(cache, id);
 
