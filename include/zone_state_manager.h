@@ -3,6 +3,7 @@
 #include "glib.h"
 #include "stdbool.h"
 #include "zncache.h"
+
 #include <stdint.h>
 
 /**
@@ -34,20 +35,21 @@ struct zn_zone {
  * @brief Stores the state of all zones on a ZNS SSD.
  */
 struct zone_state_manager {
-    GMutex			 state_mutex;	/**< The lock protecting this data structure */
-    GQueue			*active;	/**< The queue of zones that are currently active. Stores pointers to zn_zones. */
-    GQueue			*free;		/**< The queue of zones that are free. Stores pointers to zn_zones. */
+    GMutex state_mutex; /**< The lock protecting this data structure */
+    GQueue
+        *active;  /**< The queue of zones that are currently active. Stores pointers to zn_zones. */
+    GQueue *free; /**< The queue of zones that are free. Stores pointers to zn_zones. */
     struct zn_zone *state; /**< An array that stores the state of each zone, and acts as the backing
     memory for the active and free queues. */
-    int writes_occurring; /**< The current number of writes occuring on active zones */
+    int writes_occurring;  /**< The current number of writes occuring on active zones */
 
     // Information about the cache
-    int			fd;				/**< File descriptor of the SSD */
-    uint64_t	zone_cap;		/**< Maximum storage capacity per zone in bytes. */
-    size_t		chunk_size;     /**< Size of each chunk in bytes. */
-    uint32_t	max_nr_active_zones;	/**< Maximum number of zones that can be active at once. */
-    uint64_t max_zone_chunks;           /**< Maximum amount of chunks that a zone can store */
-    uint32_t num_zones; /**< Number of zones */
+    int fd;                       /**< File descriptor of the SSD */
+    uint64_t zone_cap;            /**< Maximum storage capacity per zone in bytes. */
+    size_t chunk_size;            /**< Size of each chunk in bytes. */
+    uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
+    uint64_t max_zone_chunks;     /**< Maximum amount of chunks that a zone can store */
+    uint32_t num_zones;           /**< Number of zones */
 };
 
 /**
@@ -62,23 +64,23 @@ struct zone_state_manager {
  */
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
-                 const uint64_t zone_cap,
-                 const size_t chunk_size,
-                 const uint32_t max_nr_active_zones);
+         const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones);
 
 /** @brief Returns a new chunk that a thread can write to
  *  @param[in]  state zone_state data structure
  *  @param[out] pair the new location to write to
  *  @return 0 on success, -1 otherwise
  *  Implementation notes:
- *  - Gets an active zone if it can, otherwise get from the free list (and move it to the active list)
+ *  - Gets an active zone if it can, otherwise get from the free list (and move it to the active
+ * list)
  *  - Increment the corresponding chunk pointer to point to the next free zone
  *  - If chunk pointer reaches the end, move zone to full list
-*/
+ */
 int
 zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair);
 
-/** @brief Not yet thought out well, but a function for host-side gc (when we need to relocate a number of chunks)
+/** @brief Not yet thought out well, but a function for host-side gc (when we need to relocate a
+ * number of chunks)
  *  @param chunks specifies how many chunks we need
  *  @return which chunks can be written to, in the form of a dynamic array
  *  Implementation notes:
@@ -97,7 +99,7 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair);
  *  - Should be the one to perform the freeing operation
  *  - Does not manage zone eviction policy
  *  @return 0 if no error, -1 otherwise
- */ 
+ */
 int
 zsm_evict(struct zone_state_manager *state, int zone_to_free);
 

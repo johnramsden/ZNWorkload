@@ -11,14 +11,15 @@
  *  2. Zone ID → Data ID
  */
 struct zn_cachemap {
-    GMutex		  cache_map_mutex;
-    GHashTable	 *zone_map;
-    GArray		**data_map; /**< Zone ID → listof (Data ID) */
-    gint		*active_readers; /**< Non-owning reference to the number of currently active readers per zone. */
+    GMutex cache_map_mutex;
+    GHashTable *zone_map;
+    GArray **data_map;    /**< Zone ID → listof (Data ID) */
+    gint *active_readers; /**< Non-owning reference to the number of currently active readers per
+                             zone. */
 };
 
 void
-zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint* active_readers_arr);
+zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint *active_readers_arr);
 
 /**
  * @struct zone_map_result
@@ -32,18 +33,15 @@ zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint* active_read
  */
 struct zone_map_result {
     union {
-        struct zn_pair	location;
-        GCond			*write_finished;
+        struct zn_pair location;
+        GCond *write_finished;
     } value;
 
-    enum {
-        RESULT_LOC	= 0,
-        RESULT_COND = 1
-    } type;
+    enum { RESULT_LOC = 0, RESULT_COND = 1 } type;
 };
 
 /** @brief Finds the data in the zone if it exists, otherwise returns additional information for
-	writing to a zone
+    writing to a zone
  *  @param data_id the element to find
  *  @return result indicating where to find the data
  *  If there doesn't exist the data id on disk, the cache will instead return:
@@ -51,7 +49,7 @@ struct zone_map_result {
  *       needs to write and then signal this later
  *	- When a reader requests to read, we need to increment the active
  *       reader count on behalf of them
- * 
+ *
  * This function should sleep on a condition variable when it finds it
  *      in the cache (indicating that a thread is currently writing the
  *      data to disk). When it is woken up, it should try again to see

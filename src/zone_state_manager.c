@@ -1,8 +1,10 @@
 #include "zone_state_manager.h"
-#include "glib.h"
+
 #include "assert.h"
+#include "glib.h"
 #include "libzbd/zbd.h"
 #include "znutil.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -110,7 +112,7 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     if (ret != 0) {
         return ret;
     }
-    
+
     zone->state = ZN_ZONE_ACTIVE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->active, zone);
@@ -119,26 +121,26 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 }
 
 void
-zsm_init(struct zone_state_manager *state, const uint32_t num_zones,
-                 const int fd, const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones) {
+zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
+         const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones) {
     assert(state);
-	state->fd = fd;
+    state->fd = fd;
     state->zone_cap = zone_cap;
     state->chunk_size = chunk_size;
-	state->max_zone_chunks = zone_cap / chunk_size;
-	state->max_nr_active_zones = max_nr_active_zones;
-	state->writes_occurring = 0;
-	state->num_zones = num_zones;
+    state->max_zone_chunks = zone_cap / chunk_size;
+    state->max_nr_active_zones = max_nr_active_zones;
+    state->writes_occurring = 0;
+    state->num_zones = num_zones;
 
-	g_mutex_init(&state->state_mutex);
+    g_mutex_init(&state->state_mutex);
 
     state->active = g_queue_new();
     assert(state->active);
 
-	state->free = g_queue_new();
+    state->free = g_queue_new();
     state->state = calloc(num_zones, sizeof(struct zn_zone));
     assert(state->free);
-	assert(state->state);
+    assert(state->state);
     for (uint32_t i = 0; i < num_zones; i++) {
         state->state[i] = (struct zn_zone) {.state = ZN_ZONE_FREE, .zone_id = i, .chunk_offset = 0};
         g_queue_push_tail(state->free, &state->state[i]);
@@ -150,7 +152,7 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     assert(state);
     assert(pair);
 
-	g_mutex_lock(&state->state_mutex);
+    g_mutex_lock(&state->state_mutex);
 
     uint32_t active_queue_size = g_queue_get_length(state->active);
     uint32_t writer_size = state->writes_occurring;
@@ -166,42 +168,40 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
         assert(!"TODO: Foreground eviction");
     }
 
-	assert((active_queue_size + writer_size) > 0 || free_queue_size > 0);
+    assert((active_queue_size + writer_size) > 0 || free_queue_size > 0);
 
     // No active zones that we can use
     if (active_queue_size == 0) {
 
-		// Open a new zone if we can
-		if (zsm_get_num_active_zones(state) < state->max_nr_active_zones && free_queue_size > 0) {
-			struct zn_zone *new_zone = g_queue_pop_head(state->free);
-			assert(new_zone->state == ZN_ZONE_FREE);
-			int ret = open_zone(state, new_zone);
-			if (!ret) {
-				g_mutex_unlock(&state->state_mutex);
-				return ret;
-			}
+        // Open a new zone if we can
+        if (zsm_get_num_active_zones(state) < state->max_nr_active_zones && free_queue_size > 0) {
+            struct zn_zone *new_zone = g_queue_pop_head(state->free);
+            assert(new_zone->state == ZN_ZONE_FREE);
+            int ret = open_zone(state, new_zone);
+            if (!ret) {
+                g_mutex_unlock(&state->state_mutex);
+                return ret;
+            }
 
-		} else {
-			// The thread needs to wait for a free zone
-			g_mutex_unlock(&state->state_mutex);
-			return -1;
-		}
-	}
+        } else {
+            // The thread needs to wait for a free zone
+            g_mutex_unlock(&state->state_mutex);
+            return -1;
+        }
+    }
 
-	// Get an active zone
-	dbg_print_g_queue("active,queue", state->active);
-	struct zn_zone *active_pair = g_queue_pop_head(state->active);
-	assert(active_pair->state == ZN_ZONE_ACTIVE);
+    // Get an active zone
+    dbg_print_g_queue("active,queue", state->active);
+    struct zn_zone *active_pair = g_queue_pop_head(state->active);
+    assert(active_pair->state == ZN_ZONE_ACTIVE);
 
-	*pair = (struct zn_pair) {
-		.zone = active_pair->zone_id,
-		.chunk_offset = active_pair->chunk_offset
-	};
+    *pair =
+        (struct zn_pair) {.zone = active_pair->zone_id, .chunk_offset = active_pair->chunk_offset};
 
-	active_pair->state = ZN_ZONE_WRITE_OCCURING;
-	state->writes_occurring++;
+    active_pair->state = ZN_ZONE_WRITE_OCCURING;
+    state->writes_occurring++;
 
-	g_mutex_unlock(&state->state_mutex);
+    g_mutex_unlock(&state->state_mutex);
     return 0;
 }
 
@@ -209,7 +209,7 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
 GArray
 zsm_get_active_zone_batch(int chunks) {
     (void) chunks;
-    return (GArray){};
+    return (GArray) {};
 }
 
 int
@@ -218,33 +218,33 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     assert(pair);
 
     g_mutex_lock(&state->state_mutex);
-	assert(zsm_get_num_active_zones(state) <= state->max_nr_active_zones);
+    assert(zsm_get_num_active_zones(state) <= state->max_nr_active_zones);
 
-	struct zn_zone *zone = &state->state[pair->zone];
-	assert(zone->state == ZN_ZONE_WRITE_OCCURING);
-	assert(zone->chunk_offset == pair->chunk_offset);
+    struct zn_zone *zone = &state->state[pair->zone];
+    assert(zone->state == ZN_ZONE_WRITE_OCCURING);
+    assert(zone->chunk_offset == pair->chunk_offset);
 
     // Update the state of the chunk
     state->writes_occurring--;
     zone->chunk_offset++;
     if (zone->chunk_offset == state->max_zone_chunks) {
-		close_zone(state, zone);
+        close_zone(state, zone);
     } else {
         zone->state = ZN_ZONE_ACTIVE;
-		g_queue_push_tail(state->active, zone);
-	}
+        g_queue_push_tail(state->active, zone);
+    }
 
-	g_mutex_unlock(&state->state_mutex);
-	return 0;
+    g_mutex_unlock(&state->state_mutex);
+    return 0;
 }
 
 int
 zsm_evict(struct zone_state_manager *state, int zone_to_free) {
-	assert(state);
+    assert(state);
 
-	g_mutex_lock(&state->state_mutex);
+    g_mutex_lock(&state->state_mutex);
 
-	struct zn_zone *zone = &state->state[zone_to_free];
+    struct zn_zone *zone = &state->state[zone_to_free];
     assert(zone->state == ZN_ZONE_FULL);
 
     int ret = reset_zone(state, zone);
@@ -253,17 +253,17 @@ zsm_evict(struct zone_state_manager *state, int zone_to_free) {
         return ret;
     }
 
-	assert(zone->state == ZN_ZONE_FREE);
+    assert(zone->state == ZN_ZONE_FREE);
 
-	g_mutex_unlock(&state->state_mutex);
-	return 0;
+    g_mutex_unlock(&state->state_mutex);
+    return 0;
 }
 
 uint32_t
 zsm_get_num_active_zones(struct zone_state_manager *state) {
     g_mutex_lock(&state->state_mutex);
     uint32_t len = g_queue_get_length(state->active) + state->writes_occurring;
-    g_mutex_unlock(&state->state_mutex);    
+    g_mutex_unlock(&state->state_mutex);
     return len;
 }
 
@@ -272,12 +272,12 @@ zsm_get_num_free_zones(struct zone_state_manager *state) {
     g_mutex_lock(&state->state_mutex);
     uint32_t len = g_queue_get_length(state->free);
     g_mutex_unlock(&state->state_mutex);
-	return len;
+    return len;
 }
 
 uint32_t
 zsm_get_num_full_zones(struct zone_state_manager *state) {
-	
+
     g_mutex_lock(&state->state_mutex);
     uint32_t count = 0;
     for (uint32_t i = 0; i < state->num_zones; i++) {
