@@ -6,17 +6,19 @@
 /**
  * @struct ze_cache_map
  * @brief A map for finding where data is stored on the disk based on the data ID.
- * Keeps track of three things:
+ * Keeps track of two things:
  *  1. Data ID → (Zone ID, chunk pointer)
  *  2. Zone ID → Data ID
- *  3. The number of active readers in each zone
  */
 struct ze_cache_map {
-    GMutex		 cache_map_mutex;
-    GHashTable	*zone_map;
-    GArray		*data_map;
-    gint		*active_readers;
+    GMutex		  cache_map_mutex;
+    GHashTable	 *zone_map;
+    GArray		**data_map; /**< Zone ID → listof (Data ID) */
+    gint		*active_readers; /**< Non-owning reference to the number of currently active readers per zone. */
 };
+
+void
+cache_map_setup(struct ze_cache_map *map, const int num_zones, gint* active_readers_arr);
 
 /**
  * @struct zone_map_result
@@ -31,7 +33,7 @@ struct ze_cache_map {
 struct zone_map_result {
     union {
         struct ze_pair	location;
-        GCond			write_finished;
+        GCond			*write_finished;
     } value;
 
     enum {
@@ -56,7 +58,7 @@ struct zone_map_result {
  *      if the data exists in the cache map.
  */
 struct zone_map_result
-ze_cache_map_find(int data_id);
+ze_cache_map_find(struct ze_cache_map *map, int data_id);
 
 /** @brief Inserts a new mapping into the data structure. Called by
  * the thread when it's finished writing to the zone.
@@ -71,7 +73,7 @@ ze_cache_map_find(int data_id);
  *     here by signalling when the thread calls this function.
  */
 void
-ze_cache_map_insert(int data_id, struct ze_pair location);
+ze_cache_map_insert(struct ze_cache_map *map, int data_id, struct ze_pair location);
 
 /** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
  * @param zone the zone
@@ -81,4 +83,4 @@ ze_cache_map_insert(int data_id, struct ze_pair location);
  *   - Additionally clears the Zone ID → Data ID map
  */
 void
-ze_clear_zone(int zone);
+ze_clear_zone(struct ze_cache_map *map, uint32_t zone);
