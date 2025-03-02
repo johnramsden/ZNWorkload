@@ -1,8 +1,8 @@
 // For pread
 #define _XOPEN_SOURCE 500
 
-#include "ze_cache.h"
-#include "ze_util.h"
+#include "zncache.h"
+#include "znutil.h"
 
 #include "libzbd/zbd.h"
 

@@ -1,5 +1,5 @@
-#include "ze_cache.h"
-#include "ze_util.h"
+#include "zncache.h"
+#include "znutil.h"
 
 #include <stdio.h>
 

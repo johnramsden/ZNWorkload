@@ -1,5 +1,5 @@
-#ifndef ZONE_EVICT_IDEAL_H
-#define ZONE_EVICT_IDEAL_H
+#ifndef ZNCACHE_H
+#define ZNCACHE_H
 
 #include <stdint.h>
 
@@ -17,4 +17,4 @@ struct ze_pair {
     bool in_use;           /**< Defines if ze_pair is in use. */
 };
 
-#endif // ZONE_EVICT_IDEAL_H
+#endif // ZNCACHE_H
