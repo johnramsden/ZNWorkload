@@ -1,8 +1,8 @@
-#include "ze_zone_state.h"
+#include "zone_state_manager.h"
 #include "glib.h"
 #include "assert.h"
 #include "libzbd/zbd.h"
-#include "ze_util.h"
+#include "znutil.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -264,7 +264,7 @@ ze_get_num_active_zones(struct ze_zone_state *state) {
     g_mutex_lock(&state->state_mutex);
     uint32_t len = g_queue_get_length(state->active) + state->writes_occurring;
     g_mutex_unlock(&state->state_mutex);    
-    return len
+    return len;
 }
 
 uint32_t

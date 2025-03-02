@@ -1,8 +1,8 @@
 #include "glib.h"
 #include "glibconfig.h"
-#include "ze_evict_policy.h"
-#include "ze_util.h"
-#include "ze_promotional_eviction_policy.h"
+#include "eviction_policy.h"
+#include "znutil.h"
+#include "eviction_policy_promotional.h"
 #include <stdint.h>
 #include <stdlib.h>
 

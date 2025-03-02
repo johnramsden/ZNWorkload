@@ -2,7 +2,7 @@
 
 #include "glib.h"
 #include "stdbool.h"
-#include "ze_cache.h"
+#include "zncache.h"
 #include <stdint.h>
 
 /**

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "glib.h"
-#include "ze_promotional_eviction_policy.h"
+#include "eviction_policy_promotional.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "glib.h"
-#include "ze_cache.h"
+#include "zncache.h"
 
 /**
  * @struct ze_cache_map

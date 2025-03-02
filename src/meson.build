@@ -1,5 +1,11 @@
 # Get the sources
-srcs = files('zncache.c', 'znutil.c')
+srcs = files(
+    'zncache.c',
+    'znutil.c',
+    'cachemap.c',
+    'zone_state_manager.c',
+    'eviction/promotional.c'
+)
 
 executable(
     'zncache',
