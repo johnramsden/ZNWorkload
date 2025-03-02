@@ -7,18 +7,18 @@
 #include <stdlib.h>
 
 void
-promote_update_policy(policy_data_t _policy, uint32_t zone_id,
-                      uint32_t chunk_idx, enum ze_io_type io_type) {
-	struct ze_promotional_policy* policy = _policy;
+zn_policy_promotional_update(policy_data_t _policy, uint32_t zone_id,
+                      uint32_t chunk_idx, enum zn_io_type io_type) {
+	struct zn_policy_promotional* policy = _policy;
 	g_mutex_lock(&policy->policy_mutex);
 
     // We only add zones to the LRU when they are full.
-    if (io_type == ZE_WRITE && chunk_idx == policy->num_zones) {
+    if (io_type == ZN_WRITE && chunk_idx == policy->num_zones) {
         g_queue_push_tail(&policy->lru_queue, GUINT_TO_POINTER(zone_id));
         GList *node = g_queue_peek_tail_link(&policy->lru_queue);
         g_hash_table_insert(policy->zone_to_lru_map, GUINT_TO_POINTER(zone_id), node);
 
-    } else if (io_type == ZE_READ) {
+    } else if (io_type == ZN_READ) {
         GList* node = g_hash_table_lookup(policy->zone_to_lru_map,
                                                GUINT_TO_POINTER(zone_id));
         if (node) {
@@ -38,8 +38,8 @@ promote_update_policy(policy_data_t _policy, uint32_t zone_id,
 }
 
 int
-promote_get_zone_to_evict(policy_data_t policy) {
-	struct ze_promotional_policy* promote_policy = policy;
+zn_policy_promotional_get_zone_to_evict(policy_data_t policy) {
+	struct zn_policy_promotional* promote_policy = policy;
 
 	g_mutex_lock(&promote_policy->policy_mutex);
 

@@ -5,7 +5,7 @@
 #include <string.h>
 
 void
-cache_map_setup(struct ze_cache_map *map, const int num_zones, gint* active_readers_arr) {
+zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint* active_readers_arr) {
     g_mutex_init(&map->cache_map_mutex);
     map->active_readers = malloc(sizeof(int) * num_zones);
 	assert(map->active_readers);
@@ -30,7 +30,7 @@ static void free_cond_var(GCond* cond) {
 }
 
 struct zone_map_result
-ze_cache_map_find(struct ze_cache_map *map, int data_id) {
+zn_cachemap_find(struct zn_cachemap *map, int data_id) {
     assert(map);
     
 	g_mutex_lock(&map->cache_map_mutex);
@@ -84,7 +84,7 @@ ze_cache_map_find(struct ze_cache_map *map, int data_id) {
 			// 
             // There are two situations in which the cv outlives the
 			// zone_map_result. The first situation is when the
-			// writing thread calls ze_cache_map_insert and overwrites
+			// writing thread calls zn_cachemap_insert and overwrites
 			// the entry while there are threads still waiting on the
 			// cv. The second situation occurs when the eviction
 			// thread erases the zone_map_result during eviction. To
@@ -97,12 +97,12 @@ ze_cache_map_find(struct ze_cache_map *map, int data_id) {
 }
 
 void
-ze_cache_map_insert(struct ze_cache_map *map, int data_id, struct ze_pair location) {
+zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location) {
 	assert(map);
 
     g_mutex_lock(&map->cache_map_mutex);
 
-	// It must contain an entry if the thread called ze_cache_map_find beforehand
+	// It must contain an entry if the thread called zn_cachemap_find beforehand
     assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
 
     struct zone_map_result *result = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
@@ -121,7 +121,7 @@ ze_cache_map_insert(struct ze_cache_map *map, int data_id, struct ze_pair locati
 }
 
 void
-ze_clear_zone(struct ze_cache_map *map, uint32_t zone) {
+zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
     assert(map);
 
     g_mutex_lock(&map->cache_map_mutex);

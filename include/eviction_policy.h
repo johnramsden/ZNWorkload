@@ -7,22 +7,22 @@
 #include <stdlib.h>
 
 /**
- * @enum ze_io_type
+ * @enum zn_io_type
  * @brief Defines the type of IO done
  */
-enum ze_io_type {
-    ZE_READ = 0,
-    ZE_WRITE = 1,
+enum zn_io_type {
+    ZN_READ = 0,
+    ZN_WRITE = 1,
 };
 
 /**
- * @enum ze_eviction_policy
+ * @enum zn_eviction_policy
  * @brief Defines eviction policies
  */
-enum ze_evict_policy_type {
-    ZE_EVICT_ZONE = 0,  /**< Zone granularity eviction. */
-    ZE_EVICT_PROMOTE_ZONE = 1,  /**< Zone granularity eviction with promotion. */
-    ZE_EVICT_CHUNK = 2, /**< Chunk granularity eviction. */
+enum zn_evict_policy_type {
+    ZN_EVICT_ZONE = 0,  /**< Zone granularity eviction. */
+    ZN_EVICT_PROMOTE_ZONE = 1,  /**< Zone granularity eviction with promotion. */
+    ZN_EVICT_CHUNK = 2, /**< Chunk granularity eviction. */
 };
 
 /** Policy specific data */
@@ -30,7 +30,7 @@ typedef void *policy_data_t;
 
 /** A generic policy update function */
 typedef void (*update_policy_t)(policy_data_t policy, uint32_t zone_id,
-                                uint32_t chunk_idx, enum ze_io_type io_type);
+                                uint32_t chunk_idx, enum zn_io_type io_type);
 
 /** A generic eviction function informed by the policy */
 typedef int (*get_zone_to_evict)(policy_data_t policy);
@@ -45,57 +45,60 @@ typedef void (*do_gc_t)(policy_data_t policy);
     anything aside from waking up every once in a while. */
 typedef void(*do_evict_t)(policy_data_t policy);
 
-/** @struct ze_evict_policy
+/** @struct zn_evict_policy
 	@brief generic policy type
  */
-struct ze_evict_policy {
-    enum ze_evict_policy_type type; /**< Eviction policy. */
+struct zn_evict_policy {
+    enum zn_evict_policy_type type; /**< Eviction policy. */
 	policy_data_t		data;	/**< Opaque data handle */
     update_policy_t		update_policy;	/**< Called when policy needs to be updated */
     get_zone_to_evict	get_zone_to_evict;	/**< Called when eviction thread needs to evict something */
 };
 
-struct ze_chunk_evict_policy {
-    enum ze_evict_policy_type type; /**< Eviction policy. */
+struct zn_chunk_evict_policy {
+    enum zn_evict_policy_type type; /**< Eviction policy. */
     policy_data_t	data;		/**< Opaque data handle */
     update_policy_t update_policy;	/**< Called when policy needs to be updated */
     do_evict_t		do_evict;	/**< Marks chunks for eviction */    
 	do_gc_t			do_gc;		/**< Performs actual GC */
 };
 
+// BELOW: Should be in promotional
+
 /** @brief Updates the promotional LRU policy
  */
 void
-promote_update_policy(policy_data_t policy, uint32_t zone_id,
-                      uint32_t chunk_idx, enum ze_io_type io_type);
+zn_policy_promotional_update(policy_data_t policy, uint32_t zone_id,
+                      uint32_t chunk_idx, enum zn_io_type io_type);
 
 /** @brief Gets a zone to evict.
  */
 int
-promote_get_zone_to_evict(policy_data_t policy);
+zn_policy_promotional_get_zone_to_evict(policy_data_t policy);
 
-/** @brief Sets up the data structure for the selected eviction policy. 
+
+/** @brief Sets up the data structure for the selected eviction policy.
  */
 void
-evict_policy_setup(struct ze_evict_policy *policy, enum ze_evict_policy_type type) {
+zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type) {
 
     switch (type) {
-    case ZE_EVICT_PROMOTE_ZONE: {
-        struct ze_promotional_policy *data = malloc(sizeof(struct ze_promotional_policy));
+    case ZN_EVICT_PROMOTE_ZONE: {
+        struct zn_policy_promotional *data = malloc(sizeof(struct zn_policy_promotional));
         g_mutex_init(&data->policy_mutex);
         data->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         g_queue_init(&data->lru_queue);
 
-		*policy = (struct ze_evict_policy) {
-			.type = ZE_EVICT_PROMOTE_ZONE,
+		*policy = (struct zn_evict_policy) {
+			.type = ZN_EVICT_PROMOTE_ZONE,
 			.data = data,
-			.update_policy = promote_update_policy,
-			.get_zone_to_evict = promote_get_zone_to_evict
+			.update_policy = zn_policy_promotional_update,
+			.get_zone_to_evict = zn_policy_promotional_get_zone_to_evict
 		};
     }
 
-    case ZE_EVICT_ZONE:
-    case ZE_EVICT_CHUNK:
+    case ZN_EVICT_ZONE:
+    case ZN_EVICT_CHUNK:
         fprintf(stderr, "NYI\n");
         exit(1);
         break;

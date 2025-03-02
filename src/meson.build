@@ -4,7 +4,9 @@ srcs = files(
     'znutil.c',
     'cachemap.c',
     'zone_state_manager.c',
-    'eviction/promotional.c'
+    'eviction/promotional.c',
+    'eviction/chunk.c',
+    'eviction/zone.c'
 )
 
 executable(
