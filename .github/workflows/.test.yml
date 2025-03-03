@@ -1,0 +1,71 @@
+name: Run SSD and ZNS Workloads
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  setup-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y meson clang-format doxygen
+
+      - name: Build dependencies
+        run: ./build-deps.sh
+
+      - name: Compile project
+        run: |
+          meson setup buildDir
+          meson compile -C buildDir
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: buildDir
+          key: ${{ runner.os }}-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+  ssd-run:
+    runs-on: ubuntu-latest
+    needs: setup-build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore build artifacts
+        uses: actions/cache@v3
+        with:
+          path: buildDir
+          key: ${{ runner.os }}-build-${{ github.sha }}
+
+      - name: Run SSD workload
+        run: ./nullbk.sh
+
+  zns-run:
+    runs-on: ubuntu-latest
+    needs: setup-build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore build artifacts
+        uses: actions/cache@v3
+        with:
+          path: buildDir
+          key: ${{ runner.os }}-build-${{ github.sha }}
+
+      - name: Set up emulated ZNS device
+        run: ./scripts/nullblk-zoned.sh 4096 32 0 100
+
+      - name: Run ZNS workload
+        run: ./ze_cache /dev/nullb0 524288 2
+
+      - name: Clean up emulated ZNS device
+        run: ./scripts/nullblk-zoned-delete.sh 0
