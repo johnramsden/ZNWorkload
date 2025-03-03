@@ -95,6 +95,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
                                                 .update_policy = zn_policy_promotional_update,
                                                 .get_zone_to_evict =
                                                     zn_policy_promotional_get_zone_to_evict};
+            break;
         }
 
         case ZN_EVICT_ZONE:
