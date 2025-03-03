@@ -2,6 +2,7 @@
 #define ZONE_EVICT_IDEAL_H
 
 #include <stdint.h>
+#include <stdbool.h> // Needed on old C (actions, cortes)
 
 /**
  * @struct ze_pair

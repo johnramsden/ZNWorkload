@@ -1,0 +1,104 @@
+name: Run SSD and ZNS Workloads
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:  # Allows manual runs
+
+jobs:
+  run-qemu-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: |
+          sudo apt update >/dev/null
+          sudo apt install -y qemu-system-x86 qemu-utils cloud-utils wget sshpass >/dev/null
+
+      - name: Download Ubuntu Cloud Image
+        run: |
+          wget -O ubuntu.qcow2 https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img -o /dev/null
+
+      - name: Resize Ubuntu QEMU Disk
+        run: |
+          qemu-img resize ubuntu.qcow2 12G
+
+      - name: Create Cloud-Init Disk
+        run: |
+          cat > user-data <<EOF
+          #cloud-config
+          password: ubuntu
+          chpasswd: { expire: False }
+          ssh_pwauth: True
+          EOF
+
+          cloud-localds cloud-init.iso user-data
+
+      - name: Run QEMU VM with Ubuntu
+        run: |
+          sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -m 12G \
+            -smp 2 \
+            -cpu host \
+            -drive file=ubuntu.qcow2,format=qcow2,if=virtio \
+            -drive file=cloud-init.iso,format=raw,if=virtio \
+            -net user,hostfwd=tcp::2222-:22 \
+            -net nic \
+            -nographic &
+
+          # Wait for SSH to be available
+          sleep 60
+
+      - name: Install deps
+        run: |
+          mkdir ~/.ssh
+          ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts
+          sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 'sudo apt update && sudo apt install -y \
+            linux-modules-extra-$(uname -r) \
+            autoconf \
+            automake \
+            libtool \
+            build-essential \
+            meson \
+            ninja-build \
+            pkg-config \
+            clang \
+            git \
+            wget \
+            libglib2.0-dev'
+
+      - name: Build Code in QEMU
+        run: |
+          sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
+          git clone https://github.com/johnramsden/ZNWorkload.git --recursive
+          cd ZNWorkload
+          ./build-deps.sh
+          meson setup buildDir
+          meson compile -C buildDir
+          EOF
+
+      - name: Run ZNS
+        run: |
+          sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
+          set -e  # Exit on first error
+          cd ZNWorkload
+          sudo ./scripts/nullblk.sh 4096 1 0 14 "zns"
+          sudo ./buildDir/src/ze_cache /dev/nullb0 524288 2
+          sudo ./scripts/nullblk-zoned-delete.sh 0
+          EOF
+
+      - name: Run SSD
+        run: |
+          sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
+          sudo ./scripts/nullblk-zoned-delete.sh 0 &>/dev/null || true # incase previous failed
+          set -e  # Exit on first error
+          cd ZNWorkload
+          sudo ./scripts/nullblk.sh 4096 1 0 14 "ssd"
+          sudo ./buildDir/src/ze_cache /dev/nullb0 524288 2
+          sudo ./scripts/nullblk-zoned-delete.sh 0
+          EOF
