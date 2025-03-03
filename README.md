@@ -45,7 +45,7 @@ Create an emulated ZNS device via `scripts/nullblk-zones.sh` with:
 * sequential zones: 100
 
 ```shell
-./scripts/nullblk-zoned.sh 4096 32 0 100
+./scripts/nullblk.sh 4096 32 0 100 "zns" # or ssd
 ```
 
 ```
@@ -68,8 +68,16 @@ For mini-test:
 * Start evict at 2 zones free: `24` entries
 * On evict, evict 4 zones: `20` entries remain
 
+ZNS:
+
 ```shell
-./scripts/nullblk-zoned.sh 4096 1 0 14
+./scripts/nullblk.sh 4096 1 0 14 "zns"
+```
+
+On SSD:
+
+```shell
+./scripts/nullblk.sh 4096 1 0 14 "ssd"
 ```
 
 ```shell
