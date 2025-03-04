@@ -1,8 +1,11 @@
 // For pread
+#include "ze_evict_policy.h"
+#include "ze_zone_state.h"
 #define _XOPEN_SOURCE 500
 
 #include "ze_cache.h"
 #include "ze_util.h"
+#include "ze_cache_map.h"
 
 #include "libzbd/zbd.h"
 
@@ -58,37 +61,6 @@ struct ze_reader {
 };
 
 /**
- * @enum ze_zone_condition
- * @brief Defines possible conditions of a cache zone.
- *
- * Zones transition between these states based on their usage and availability.
- */
-enum ze_zone_condition {
-    ZE_ZONE_FREE = 0,   /**< The zone is available for new allocations. */
-    ZE_ZONE_FULL = 1,   /**< The zone is completely occupied and cannot accept new data. */
-    ZE_ZONE_ACTIVE = 2, /**< The zone is currently in use and may still have space for new data. */
-};
-
-/**
- * @enum ze_zone_state
- * @brief Defines state of a zone
- */
-struct ze_zone_state {
-    uint32_t chunk_loc;                /**< Current location for next chunk insert. */
-    enum ze_zone_condition zone_state; /**< Possible conditions zone. */
-};
-
-/**
- * @enum ze_eviction_policy
- * @brief Defines eviction policies
- */
-enum ze_eviction_policy {
-    ZE_EVICT_ZONE = 0,  /**< Zone granularity eviction. */
-    ZE_EVICT_PROMOTE_ZONE = 1,  /**< Zone granularity eviction with promotion. */
-    ZE_EVICT_CHUNK = 2, /**< Chunk granularity eviction. */
-};
-
-/**
  * @enum ze_backend
  * @brief Defines SSD backends
  */
@@ -115,23 +87,11 @@ struct ze_cache {
     size_t chunk_sz;              /**< Size of each chunk in bytes. */
     uint64_t zone_cap;            /**< Maximum storage capacity per zone in bytes. */
 
-    // Cache structures
-    GQueue *lru_queue;    /**< Least Recently Used (LRU) queue for zone eviction. */
-    GMutex cache_lock;    /**< Mutex to protect cache operations. */
-    GHashTable *zone_map; /**< Hash table mapping data IDs to `ze_pair` entries in a zone_pool. */
-    GHashTable *zone_to_lru_map; /**< Hash table mapping zones to locations in the LRU queue. */
-
-    // Free/active zone management
-    GQueue *free_list; /**< Queue of zones that are currently free and available for allocation. */
-    // Zones that have some space and are still active
-    GQueue *active_queue; /**< Queue of zones that are currently active and in use. */
-
-    struct ze_pair **zone_pool; /**< Pool of zone pairs */
-
-    enum ze_eviction_policy eviction_policy; /**< Eviction policy. */
-    struct ze_zone_state *zone_state;        /**< Array representing the state of each Zone */
-
+	struct ze_cache_map cache_map;
+	struct ze_evict_policy eviction_policy;
+	struct ze_zone_state zone_state;
     struct ze_reader reader; /**< Reader structure for tracking workload location. */
+	gint *active_readers;
 };
 
 /**
@@ -148,45 +108,6 @@ struct ze_thread_data {
 };
 
 /**
- * @brief Reset a zone
- *
- * @param cache cache Pointer to the `ze_cache` structure, caller is responsible for locking
- * @param zone_id Zone to reset
- *
- * @return Returns 0 on success and -1 otherwise.
- */
-static int
-ze_reset_zone(struct ze_cache *cache, uint32_t zone_id) {
-    if (cache->zone_state[zone_id].zone_state == ZE_ZONE_FREE) {
-        dbg_printf("Zone already closed\n");
-        return 0;
-    }
-
-    unsigned long long wp = CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, 0, zone_id);
-    dbg_printf("Closing zone %u, zone pointer %llu\n", zone_id, wp);
-    zbd_set_log_level(ZBD_LOG_ERROR);
-
-    // FOR DEBUGGING ZONE STATE
-    // struct zbd_zone zone;
-    // unsigned int nr_zones;
-    // if (zbd_report_zones(cache->fd, wp, 1, ZBD_RO_ALL, &zone, &nr_zones) == 0) {
-    //     printf("Zone state before close: %u\n", zone.cond == ZBD_ZONE_COND_FULL);
-    // }
-
-    // NOTE: FULL ZONES ARE NOT ACTIVE
-    int ret = zbd_reset_zones(cache->fd, wp, cache->zone_cap);
-    if (ret != 0) {
-        dbg_printf("Failed to close zone %u\n", zone_id);
-        return ret;
-    }
-
-    cache->zone_state[zone_id].zone_state = ZE_ZONE_FREE;
-    cache->zone_state[zone_id].chunk_loc = 0;
-
-    return ret;
-}
-
-/**
  * Execute promotional eviction
  *
  * @param cache Pointer to the `ze_cache` structure
@@ -196,7 +117,7 @@ ze_reset_zone(struct ze_cache *cache, uint32_t zone_id) {
  */
 static void
 ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
-    uint32_t num_evict = EVICT_LOW_THRESH-free_zones;
+    uint32_t num_evict = EVICT_LOW_THRESH - free_zones;
 
     dbg_printf("Executing eviction, EVICT_LOW_THRESH=%u, free_zones=%u, num_evict=%u\n",
                EVICT_LOW_THRESH, free_zones, num_evict);
@@ -248,68 +169,6 @@ zone_cap(int fd, uint64_t *zone_capacity) {
     return ret;
 }
 
-#ifdef VERIFY
-/**
- * @brief Verifies the integrity of a `ze_cache` structure using assertions.
- *
- * This function checks whether essential components of the `ze_cache` structure
- * are properly initialized. If any assertion fails, the program will terminate,
- * ensuring that the cache is in a valid state before proceeding.
- *
- * @param cache Pointer to the `ze_cache` structure to validate.
- *
- * @note This function is only enabled when `VERIFY` is defined. If `VERIFY` is not
- *       defined, `VERIFY_ZE_CACHE(ptr)` does nothing.
- */
-static void
-check_assertions_ze_cache(struct ze_cache *cache) {
-    assert(cache != NULL);
-    assert(cache->zone_map != NULL);
-    assert(cache->zone_to_lru_map != NULL);
-    assert(cache->zone_state != NULL);
-    assert(cache->active_queue != NULL);
-    assert(cache->lru_queue != NULL);
-    assert(cache->free_list != NULL);
-    assert(cache->fd > 0);
-
-    assert(cache->zone_pool != NULL);
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        assert(cache->zone_pool[i] != NULL);
-    }
-
-    uint32_t zone_state_active = 0, zone_state_free = 0, zone_state_full = 0, zone_state_total = 0;
-
-    for (GList *node = cache->active_queue->head; node != NULL; node = node->next) {
-        int data = GPOINTER_TO_INT(node->data);
-        assert(cache->zone_state[data].zone_state == ZE_ZONE_ACTIVE);
-        zone_state_active++;
-    }
-    for (GList *node = cache->free_list->head; node != NULL; node = node->next) {
-        int data = GPOINTER_TO_INT(node->data);
-        assert(cache->zone_state[data].zone_state == ZE_ZONE_FREE);
-        zone_state_free++;
-    }
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        if (cache->zone_state[i].zone_state == ZE_ZONE_FULL) {
-            zone_state_full++;
-        }
-    }
-
-    if (cache->nr_active_zones != zone_state_active) {
-        dbg_printf("nr_active_zones = %d != zone_state_active = %d\n", cache->nr_active_zones,
-                   zone_state_active);
-    }
-    assert(cache->nr_active_zones == zone_state_active);
-
-    zone_state_total = zone_state_active + zone_state_free + zone_state_full;
-    if (cache->nr_zones != zone_state_total) {
-        dbg_printf("cache->nr_zones=%u != zone_state_total=%u, active=%u, full=%u, free=%u\n",
-                   cache->nr_zones, zone_state_total, zone_state_active, zone_state_full,
-                   zone_state_total);
-    }
-    assert(cache->nr_zones == zone_state_total);
-}
-
 /**
  * @brief Macro to invoke `check_assertions_ze_cache` when `VERIFY` is defined.
  *
@@ -336,29 +195,6 @@ ze_print_cache(struct ze_cache *cache) {
 }
 
 /**
- * @brief Initializes the free list for the cache zones.
- *
- * This function allocates a new queue to manage free zones and populates it
- * with all available zone indices. If memory allocation fails, it invokes
- * `nomem()` to handle the error.
- *
- * @param cache Pointer to the `ze_cache` structure whose free list is being initialized.
- *
- * @note The function assumes that `cache->nr_zones` is set before calling it.
- *       Each zone index is stored as a pointer using `GINT_TO_POINTER(i)`.
- */
-static void
-ze_init_free_list(struct ze_cache *cache) {
-    cache->free_list = g_queue_new();
-    if (cache->free_list == NULL) {
-        nomem();
-    }
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        g_queue_push_tail(cache->free_list, GINT_TO_POINTER(i));
-    }
-}
-
-/**
  * @brief Initializes a `ze_cache` structure with the given parameters.
  *
  * This function sets up the cache by initializing its fields, creating the required
@@ -374,7 +210,7 @@ ze_init_free_list(struct ze_cache *cache) {
  */
 static void
 ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum ze_eviction_policy eviction_policy, enum ze_backend backend) {
+              int fd, enum ze_evict_policy_type eviction_policy, enum ze_backend backend) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -384,7 +220,6 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->nr_active_zones = 0;
     cache->zone_cap = zone_cap;
     cache->max_zone_chunks = zone_cap / chunk_sz;
-    cache->eviction_policy = eviction_policy;
     cache->backend = backend;
 
 #ifdef DEBUG
@@ -396,54 +231,12 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     printf("\tmax_nr_active_zones=%u\n", cache->max_nr_active_zones);
 #endif
 
-    // Create a hash table with integer keys and struct values
-    cache->zone_map = g_hash_table_new(g_direct_hash, g_direct_equal);
-    if (cache->zone_map == NULL) {
-        nomem();
-    }
-    // Create a hash table with integer keys and lru_queue address values
-    cache->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
-    if (cache->zone_map == NULL) {
-        nomem();
-    }
-    // Set all mappings NULL
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        g_hash_table_insert(cache->zone_to_lru_map, GINT_TO_POINTER(i), NULL);
-    }
+	// Set up the data structures
+    cache_map_setup(&cache->cache_map, cache->nr_zones);
+    evict_policy_setup(&cache->eviction_policy, eviction_policy);
+    zone_state_setup(cache->zone_state, cache->nr_zones);
+	cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
 
-    // Init lists
-    cache->zone_state = g_new0(struct ze_zone_state, cache->nr_zones);
-    if (cache->zone_state == NULL) {
-        nomem();
-    }
-
-    cache->zone_pool = g_new0(struct ze_pair *, cache->nr_zones);
-    if (cache->zone_pool == NULL) {
-        nomem();
-    }
-    for (uint32_t i = 0; i < cache->nr_zones; i++) {
-        cache->zone_pool[i] = g_new0(struct ze_pair, cache->max_zone_chunks);
-        if (cache->zone_pool[i] == NULL) {
-            nomem();
-        }
-        for (uint32_t j = 0; j < cache->max_zone_chunks; j++) {
-            cache->zone_pool[i][j].in_use = false;
-        }
-    }
-
-    cache->lru_queue = g_queue_new();
-    if (cache->lru_queue == NULL) {
-        nomem();
-    }
-
-    cache->active_queue = g_queue_new();
-    if (cache->active_queue == NULL) {
-        nomem();
-    }
-
-    ze_init_free_list(cache);
-
-    g_mutex_init(&cache->cache_lock);
     g_mutex_init(&cache->reader.lock);
     cache->reader.query_index = 0;
     cache->reader.workload_index = 0;
@@ -511,135 +304,6 @@ ze_read_from_disk(struct ze_cache *cache, struct ze_pair *zone_pair) {
     }
 
     return data;
-}
-
-/**
- * @brief Open a zone
- *
- * @param cache cache Pointer to the `ze_cache` structure, caller is responsible for locking
- * @param zone_id Zone to open
- *
- * @return Returns 0 on success and -1 otherwise.
- */
-static int
-ze_open_zone(struct ze_cache *cache, uint32_t zone_id) {
-    if (cache->zone_state[zone_id].zone_state == ZE_ZONE_ACTIVE) {
-        dbg_printf("Zone already open\n");
-        return 0;
-    }
-    if (cache->nr_active_zones >= cache->max_nr_active_zones) {
-        dbg_printf("Already at active zone limit\n");
-        return -1;
-    }
-
-    unsigned long long wp = CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, 0, zone_id);
-    dbg_printf("Opening zone %u, zone pointer %llu\n", zone_id, wp);
-    
-    int ret;
-    if (cache->backend == ZE_BACKEND_ZNS) {
-        ret = zbd_open_zones(cache->fd, wp, 1);
-        if (ret != 0) {
-            return ret;
-        }   
-    } else {
-        // We don't have to do anything with block devices
-        ret = 0;
-    }
-    
-    cache->nr_active_zones++;
-    cache->zone_state[zone_id].zone_state = ZE_ZONE_ACTIVE;
-    cache->zone_state[zone_id].chunk_loc = 0;
-    return ret;
-}
-
-/**
- * @brief Close a zone
- *
- * @param cache cache Pointer to the `ze_cache` structure, caller is responsible for locking
- * @param zone_id Zone to close
- *
- * @return Returns 0 on success and -1 otherwise.
- */
-static int
-ze_close_zone(struct ze_cache *cache, uint32_t zone_id) {
-    if (cache->zone_state[zone_id].zone_state == ZE_ZONE_FULL) {
-        dbg_printf("Zone already closed\n");
-        return 0;
-    }
-
-    unsigned long long wp = CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, 0, zone_id);
-    dbg_printf("Closing zone %u, zone pointer %llu\n", zone_id, wp);
-    zbd_set_log_level(ZBD_LOG_ERROR);
-
-    // FOR DEBUGGING ZONE STATE
-    // struct zbd_zone zone;
-    // unsigned int nr_zones;
-    // if (zbd_report_zones(cache->fd, wp, 1, ZBD_RO_ALL, &zone, &nr_zones) == 0) {
-    //     printf("Zone state before close: %u\n", zone.cond == ZBD_ZONE_COND_FULL);
-    // }
-
-    // NOTE: FULL ZONES ARE NOT ACTIVE
-    int ret = zbd_finish_zones(cache->fd, wp, cache->zone_cap);
-    if (ret != 0) {
-        dbg_printf("Failed to close zone %u\n", zone_id);
-        return ret;
-    }
-    // EXPLICIT CLOSE FAILS ON NULLBLK, TODO: TEST ON REAL DEV ON CORTES
-    // ret = zbd_close_zones(cache->fd, wp, cache->zone_cap);
-    // if (ret != 0) {
-    //     return ret;
-    // }
-    cache->nr_active_zones--;
-    cache->zone_state[zone_id].zone_state = ZE_ZONE_FULL;
-    cache->zone_state[zone_id].chunk_loc = 0;
-
-    return ret;
-}
-
-/**
- * @brief Get an active zone. If there are no active zones, create a new one from a free zone.
- *
- * @param cache Pointer to the `ze_cache` structure, caller is responsible for locking
- * @param[out] The requested zone Id if successful
- * @return Status code. 0 for success and -1 for failures.
- */
-static int
-ze_get_active_zone(struct ze_cache *cache, uint32_t *zone_id) {
-
-    int active_q_empty = g_queue_is_empty(cache->active_queue);
-    uint32_t free_q_empty = g_queue_get_length(cache->free_list);
-
-    // Early exit / GC
-    if (active_q_empty && (free_q_empty == 0) && cache->nr_active_zones < cache->max_nr_active_zones) {
-        dbg_printf("WARNING, FOREGROUND EVICTION. shouldnt really occur nr_active_zones=%u, max_nr_active_zones=%u, "
-                   "active_q_empty=%d, free_q_empty=%d\n",
-                   cache->nr_active_zones, cache->max_nr_active_zones, active_q_empty,
-                   free_q_empty);
-        // TODO: Other evicts
-        if (cache->eviction_policy == ZE_EVICT_PROMOTE_ZONE) {
-            ze_promotional_evict(cache, free_q_empty);
-        }
-    }
-
-    // Use an existing active zone
-    if (!active_q_empty) {
-        dbg_print_g_queue("active,queue", cache->active_queue);
-        *zone_id = GPOINTER_TO_INT(g_queue_pop_head(cache->active_queue));
-        return 0;
-    }
-
-    // No active zones, get a new one
-    if (cache->nr_active_zones < cache->max_nr_active_zones) {
-        *zone_id = GPOINTER_TO_INT(g_queue_pop_head(cache->free_list));
-        int ret = ze_open_zone(cache, *zone_id);
-        if (ret != 0) {
-            dbg_printf("Failed to open zone\n");
-            g_queue_push_head(cache->free_list, GINT_TO_POINTER(*zone_id));
-            return ret;
-        }
-    }
-
-    return 0;
 }
 
 /**
@@ -756,6 +420,8 @@ static unsigned char *
 ze_cache_get(struct ze_cache *cache, const uint32_t id) {
     unsigned char *data = NULL;
     gpointer id_ptr = GINT_TO_POINTER(id);
+
+	
 
     g_mutex_lock(&cache->cache_lock);
 
