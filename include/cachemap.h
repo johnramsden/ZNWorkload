@@ -56,7 +56,7 @@ struct zone_map_result {
  *      if the data exists in the cache map.
  */
 struct zone_map_result
-zn_cachemap_find(struct zn_cachemap *map, int data_id);
+zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id);
 
 /** @brief Inserts a new mapping into the data structure. Called by
  * the thread when it's finished writing to the zone.
@@ -82,3 +82,6 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
  */
 void
 zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone);
+
+void
+zn_cachemap_fail(struct zn_cachemap *map, const uint32_t id);

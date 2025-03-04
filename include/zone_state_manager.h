@@ -69,7 +69,7 @@ zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int f
 /** @brief Returns a new chunk that a thread can write to
  *  @param[in]  state zone_state data structure
  *  @param[out] pair the new location to write to
- *  @return 0 on success, -1 otherwise
+ *  @return 0 on success, 1 indicates that the thread needs to retry later, and -1 on failure
  *  Implementation notes:
  *  - Gets an active zone if it can, otherwise get from the free list (and move it to the active
  * list)
@@ -102,6 +102,9 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair);
  */
 int
 zsm_evict(struct zone_state_manager *state, int zone_to_free);
+
+void
+zsm_failed_to_write(struct zone_state_manager *state, struct zn_pair pair);
 
 /** @brief Returns the active zone count */
 uint32_t

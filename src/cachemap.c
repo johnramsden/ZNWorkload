@@ -4,13 +4,12 @@
 #include "glib.h"
 #include "glibconfig.h"
 
+#include <stdio.h>
 #include <string.h>
 
 void
 zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint *active_readers_arr) {
     g_mutex_init(&map->cache_map_mutex);
-    map->active_readers = malloc(sizeof(int) * num_zones);
-    assert(map->active_readers);
 
     map->zone_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     assert(map->zone_map);
@@ -32,7 +31,7 @@ free_cond_var(GCond *cond) {
 }
 
 struct zone_map_result
-zn_cachemap_find(struct zn_cachemap *map, int data_id) {
+zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id) {
     assert(map);
 
     g_mutex_lock(&map->cache_map_mutex);
@@ -50,10 +49,10 @@ zn_cachemap_find(struct zn_cachemap *map, int data_id) {
             if (lookup->type == RESULT_COND) {
 
                 // Increment the rc before sleeping on it
-                g_atomic_rc_box_acquire(lookup->value.write_finished);
-                g_cond_wait(lookup->value.write_finished, &map->cache_map_mutex);
-                g_atomic_rc_box_release_full(lookup->value.write_finished,
-                                             (GDestroyNotify) free_cond_var);
+                GCond *cond = lookup->value.write_finished;
+                g_atomic_rc_box_acquire(cond);
+                g_cond_wait(cond, &map->cache_map_mutex);
+                g_atomic_rc_box_release_full(cond, (GDestroyNotify) free_cond_var);
 
                 continue;
             } else { // Found the entry, increment reader and return it
@@ -139,6 +138,23 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
     }
 
     g_array_remove_range(map->data_map[zone], 0, map->data_map[zone]->len);
+
+    g_mutex_unlock(&map->cache_map_mutex);
+}
+
+void
+zn_cachemap_fail(struct zn_cachemap *map, const uint32_t id) {
+    g_mutex_lock(&map->cache_map_mutex);
+
+    assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(id)));
+    struct zone_map_result *entry = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(id));
+    assert(entry->type == RESULT_COND);
+    g_cond_broadcast(entry->value.write_finished);            // Wake up threads waiting for it
+    g_atomic_rc_box_release_full(entry->value.write_finished, // Decrement the writing thread's ref
+                                 (GDestroyNotify) free_cond_var);
+    g_hash_table_remove(map->zone_map,
+                        GINT_TO_POINTER(id)); // Threads waiting for it must write to a new location
+    g_free(entry);
 
     g_mutex_unlock(&map->cache_map_mutex);
 }

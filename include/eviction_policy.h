@@ -1,11 +1,8 @@
 #pragma once
 
-#include "eviction_policy_promotional.h"
-#include "glib.h"
+#include "zncache.h"
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 /**
  * @enum zn_io_type
@@ -30,7 +27,7 @@ enum zn_evict_policy_type {
 typedef void *policy_data_t;
 
 /** A generic policy update function */
-typedef void (*update_policy_t)(policy_data_t policy, uint32_t zone_id, uint32_t chunk_idx,
+typedef void (*update_policy_t)(policy_data_t policy, struct zn_pair location,
                                 enum zn_io_type io_type);
 
 /** A generic eviction function informed by the policy */
@@ -65,43 +62,8 @@ struct zn_chunk_evict_policy {
     do_gc_t do_gc;                  /**< Performs actual GC */
 };
 
-// BELOW: Should be in promotional
-
-/** @brief Updates the promotional LRU policy
- */
-void
-zn_policy_promotional_update(policy_data_t policy, uint32_t zone_id, uint32_t chunk_idx,
-                             enum zn_io_type io_type);
-
-/** @brief Gets a zone to evict.
- */
-int
-zn_policy_promotional_get_zone_to_evict(policy_data_t policy);
-
 /** @brief Sets up the data structure for the selected eviction policy.
  */
 void
-zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type) {
-
-    switch (type) {
-        case ZN_EVICT_PROMOTE_ZONE: {
-            struct zn_policy_promotional *data = malloc(sizeof(struct zn_policy_promotional));
-            g_mutex_init(&data->policy_mutex);
-            data->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
-            g_queue_init(&data->lru_queue);
-
-            *policy = (struct zn_evict_policy) {.type = ZN_EVICT_PROMOTE_ZONE,
-                                                .data = data,
-                                                .update_policy = zn_policy_promotional_update,
-                                                .get_zone_to_evict =
-                                                    zn_policy_promotional_get_zone_to_evict};
-            break;
-        }
-
-        case ZN_EVICT_ZONE:
-        case ZN_EVICT_CHUNK:
-            fprintf(stderr, "NYI\n");
-            exit(1);
-            break;
-    }
-}
+zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type,
+                     uint32_t zone_max_chunks);
