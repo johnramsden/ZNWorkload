@@ -3,37 +3,36 @@
 #include "ze_zone_state.h"
 #define _XOPEN_SOURCE 500
 
-#include "ze_cache.h"
-#include "ze_util.h"
-#include "ze_cache_map.h"
+#include "zncache.h"
 
 #include "libzbd/zbd.h"
+#include "znutil.h"
 
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <glib.h>
 #include <inttypes.h>
+#include <linux/fs.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <linux/fs.h>
-#include <stdint.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 #define EVICT_HIGH_THRESH 2
 #define EVICT_LOW_THRESH 4
 #define EVICTION_POLICY ZE_EVICT_PROMOTE_ZONE
 
 #define MICROSECS_PER_SECOND 1000000
-#define EVICT_SLEEP_US ((long)(0.5 * MICROSECS_PER_SECOND))
-#define ZE_READ_SLEEP_US ((long)(0.25 * MICROSECS_PER_SECOND))
+#define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
+#define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND))
 
 #define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
 
-#define BLOCK_ZONE_CAPACITY ((long)1077 * 1024 * 1024)
+#define BLOCK_ZONE_CAPACITY ((long) 1077 * 1024 * 1024)
 
 // No evict
 #define NR_WORKLOADS 4
@@ -113,7 +112,8 @@ struct ze_thread_data {
  * @param cache Pointer to the `ze_cache` structure
  * @param free_zones Current number of free zones
  *
- * @note There is nothing that should fail under a well-behaved and correct cache assuming locking is set up correctly
+ * @note There is nothing that should fail under a well-behaved and correct cache assuming locking
+ * is set up correctly
  */
 static void
 ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
@@ -130,7 +130,7 @@ ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
             continue;
         }
         for (uint32_t chunk = 0; chunk < cache->max_zone_chunks; chunk++) {
-            struct ze_pair *zp = &cache->zone_pool[zone][chunk];
+            struct zn_pair *zp = &cache->zone_pool[zone][chunk];
             assert(zp->in_use);
             zp->in_use = false;
             assert(g_hash_table_remove(cache->zone_map, GINT_TO_POINTER(zp->id)));
@@ -141,7 +141,7 @@ ze_promotional_evict(struct ze_cache *cache, uint32_t free_zones) {
         g_queue_push_tail(cache->free_list, GINT_TO_POINTER(zone_removed));
         assert(zone == zone_removed);
         assert(ze_reset_zone(cache, zone_removed) == 0);
-        dbg_printf("Evicted zone=%u (%u of %u)\n", zone_removed, i+1, num_evict);
+        dbg_printf("Evicted zone=%u (%u of %u)\n", zone_removed, i + 1, num_evict);
         i++;
     }
     dbg_print_g_queue("lru_queue", cache->lru_queue);
@@ -266,7 +266,7 @@ ze_destroy_cache(struct ze_cache *cache) {
 
     // TODO: MISSING FREES
 
-    if(cache->backend == ZE_BACKEND_ZNS) {
+    if (cache->backend == ZE_BACKEND_ZNS) {
         zbd_close(cache->fd);
     } else {
         close(cache->fd);
@@ -284,7 +284,7 @@ ze_destroy_cache(struct ze_cache *cache) {
  * @return Buffer read from disk, to be freed by caller
  */
 static unsigned char *
-ze_read_from_disk(struct ze_cache *cache, struct ze_pair *zone_pair) {
+ze_read_from_disk(struct ze_cache *cache, struct zn_pair *zone_pair) {
     unsigned char *data = malloc(cache->chunk_sz);
     if (data == NULL) {
         nomem();
@@ -365,16 +365,16 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
 }
 
 /**
- * Get the next available `ze_pair`
+ * Get the next available `zn_pair`
  *
  * @param cache Pointer to the `ze_cache` structure.
- * @param zone_id Zone id to allocate `ze_pair` from
- * @param id UID to map to `ze_pair`
- * @return ze_pair (backed by zone_pool, do not free as caller)
+ * @param zone_id Zone id to allocate `zn_pair` from
+ * @param id UID to map to `zn_pair`
+ * @return zn_pair (backed by zone_pool, do not free as caller)
  */
-static struct ze_pair *
-ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const uint32_t id) {
-    struct ze_pair * zp;
+static struct zn_pair *
+ze_get_next_zn_pair(const struct ze_cache *cache, const uint32_t zone_id, const uint32_t id) {
+    struct zn_pair *zp;
     uint32_t chunk_offset = cache->zone_state[zone_id].chunk_loc;
     zp = &cache->zone_pool[zone_id][chunk_offset];
     zp->zone = zone_id;
@@ -385,8 +385,8 @@ ze_get_next_ze_pair(const struct ze_cache * cache, const uint32_t zone_id, const
 }
 
 static void
-ze_update_lru(struct ze_cache *cache, struct ze_pair *zp) {
-    GList* node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
+ze_update_lru(struct ze_cache *cache, struct zn_pair *zp) {
+    GList *node = g_hash_table_lookup(cache->zone_to_lru_map, GINT_TO_POINTER(zp->zone));
     if (node == NULL) {
         // Not in LRU
         g_queue_push_head(cache->lru_queue, GINT_TO_POINTER(zp->zone));
@@ -429,7 +429,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
     // In cache. Read the data
     if (g_hash_table_contains(cache->zone_map, id_ptr)) {
-        struct ze_pair *zp;
+        struct zn_pair *zp;
         zp = g_hash_table_lookup(cache->zone_map, id_ptr);
         dbg_printf("Cache ID %u in cache at zone_pointer [%u,%u]\n", id, zp->zone,
                    zp->chunk_offset);
@@ -448,8 +448,9 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
             return NULL;
         }
 
-        struct ze_pair *zp = ze_get_next_ze_pair(cache, zone_id, id);
-        // Emulates pulling in data from a remote source by filling in a cache entry with random bytes
+        struct zn_pair *zp = ze_get_next_zn_pair(cache, zone_id, id);
+        // Emulates pulling in data from a remote source by filling in a cache entry with random
+        // bytes
         data = ze_gen_write_buffer(cache, id);
 
         // Write buffer to disk, 4kb blocks at a time
@@ -540,7 +541,8 @@ evict_task(gpointer user_data) {
         uint32_t free_zones = g_queue_get_length(thread_data->cache->free_list);
         if (free_zones > EVICT_HIGH_THRESH) {
             // Not at mark, wait
-            dbg_printf("EVICTION: Free zones=%u > %u, not evicting\n", free_zones, EVICT_HIGH_THRESH);
+            dbg_printf("EVICTION: Free zones=%u > %u, not evicting\n", free_zones,
+                       EVICT_HIGH_THRESH);
             g_mutex_unlock(&thread_data->cache->cache_lock);
             g_usleep(EVICT_SLEEP_US);
             continue;
@@ -559,8 +561,8 @@ evict_task(gpointer user_data) {
     return NULL;
 }
 
-// Task function. The function that each thread runs. This will simulate servicing cache requests. 
-// @param data 
+// Task function. The function that each thread runs. This will simulate servicing cache requests.
+// @param data
 void
 task_function(gpointer data, gpointer user_data) {
     (void) user_data;
@@ -626,9 +628,7 @@ main(int argc, char **argv) {
     }
 
     char *device = argv[1];
-    enum ze_backend device_type = zbd_device_is_zoned(device)?
-                                  ZE_BACKEND_ZNS :
-                                  ZE_BACKEND_BLOCK;
+    enum ze_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
@@ -639,9 +639,8 @@ main(int argc, char **argv) {
            "\tChunk size: %lu\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n",
-           device, (device_type == ZE_BACKEND_ZNS)?
-                   "ZNS" : "Block",
-           chunk_sz, nr_threads, nr_eviction_threads);
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads,
+           nr_eviction_threads);
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -663,10 +662,10 @@ main(int argc, char **argv) {
             return -1;
         }
 
-        info.nr_zones = ((long)size / BLOCK_ZONE_CAPACITY);
+        info.nr_zones = ((long) size / BLOCK_ZONE_CAPACITY);
         info.max_nr_active_zones = 0;
     }
-    
+
     if (fd < 0) {
         fprintf(stderr, "Error opening device: %s\n", device);
         return fd;
@@ -721,15 +720,9 @@ main(int argc, char **argv) {
     }
 
     // Setup eviction thread
-    struct ze_thread_data eviction_thread_data = {
-        .tid = 0, .cache = &cache, .done = false
-    };
+    struct ze_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
 
-    GThread *thread = g_thread_new(
-        "evict-thread",
-        evict_task,
-        &eviction_thread_data
-    );
+    GThread *thread = g_thread_new("evict-thread", evict_task, &eviction_thread_data);
 
     // Wait for tasks to finish and free the thread pool
     g_thread_pool_free(pool, FALSE, TRUE);
@@ -741,7 +734,8 @@ main(int argc, char **argv) {
 
     TIME_NOW(&end_time);
 
-    dbg_printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time), TIME_DIFFERENCE_MILLISEC(start_time, end_time));
+    dbg_printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time),
+               TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
     ze_destroy_cache(&cache);
