@@ -24,7 +24,8 @@ enum print_g_queue_type {
 };
 
 enum print_g_hash_table_type {
-    PRINT_G_HASH_TABLE_GINT = 0
+    PRINT_G_HASH_TABLE_GINT = 0,
+    PRINT_G_HASH_TABLE_PROM_LRU_NODE = 1
 };
 
 /**

@@ -8,8 +8,14 @@
 inline static void
 print_g_hash_table_zn_pair(gpointer key, gpointer value) {
     struct zn_pair *zp = (struct zn_pair *) value;
-    printf("\t%d: (zone=%u, chunk=%u, id=%u, in_use=%s)\n", GPOINTER_TO_INT(key),
+    printf("[%d: (zone=%u, chunk=%u, id=%u, in_use=%s)], ", GPOINTER_TO_INT(key),
            zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+}
+
+inline static void
+print_g_hash_table_prom_lru_node(gpointer key, gpointer value) {
+    GList *node = (GList *) value;
+    printf("[%d: %u], ", GPOINTER_TO_INT(key), GPOINTER_TO_INT(node->data));
 }
 
 void
@@ -17,17 +23,21 @@ print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_t
     GHashTableIter iter;
     gpointer key, value;
 
-    printf("hash table %s:\n", name);
+    printf("hash table %s: ", name);
 
     g_hash_table_iter_init(&iter, hash_table);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         switch (type) {
             case PRINT_G_HASH_TABLE_GINT:
                 print_g_hash_table_zn_pair(key, value); break;
+            case PRINT_G_HASH_TABLE_PROM_LRU_NODE:
+                print_g_hash_table_prom_lru_node(key, value); break;
             default:
-                printf("Inimplemented hash table print type"); break;
+                printf("Unimplemented hash table print type"); break;
         }
     }
+
+    puts("");
 }
 
 inline static void

@@ -19,12 +19,16 @@ zn_policy_promotional_update(policy_data_t _policy, struct zn_pair location,
 
     gpointer zone_ptr = GUINT_TO_POINTER(location.zone);
 
+    dbg_printf("State before promotional update\n");
+
+    dbg_print_g_queue("lru_queue", &policy->lru_queue, PRINT_G_QUEUE_GINT);
+    dbg_print_g_hash_table("zone_to_lru_map", policy->zone_to_lru_map, PRINT_G_HASH_TABLE_PROM_LRU_NODE);
+
     // We only add zones to the LRU when they are full.
-    if (io_type == ZN_WRITE && location.chunk_offset == policy->zone_max_chunks) {
+    if (io_type == ZN_WRITE && location.chunk_offset == policy->zone_max_chunks-1) {
         g_queue_push_tail(&policy->lru_queue, zone_ptr);
         GList *node = g_queue_peek_tail_link(&policy->lru_queue);
         g_hash_table_insert(policy->zone_to_lru_map, zone_ptr, node);
-
     } else if (io_type == ZN_READ) {
 
         GList *node = g_hash_table_lookup(policy->zone_to_lru_map, zone_ptr);
@@ -40,8 +44,11 @@ zn_policy_promotional_update(policy_data_t _policy, struct zn_pair location,
         // anything
     }
 
+    dbg_printf("State after promotional update\n");
+    dbg_print_g_queue("lru_queue", &policy->lru_queue, PRINT_G_QUEUE_GINT);
+    dbg_print_g_hash_table("zone_to_lru_map", policy->zone_to_lru_map, PRINT_G_HASH_TABLE_PROM_LRU_NODE);
+
     g_mutex_unlock(&policy->policy_mutex);
-    return;
 }
 
 int

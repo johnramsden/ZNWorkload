@@ -433,8 +433,8 @@ evict_task(gpointer user_data) {
         uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
         if (free_zones > EVICT_HIGH_THRESH) {
             // Not at mark, wait
-            dbg_printf("EVICTION: Free zones=%u > %u, not evicting\n", free_zones,
-                       EVICT_HIGH_THRESH);
+            // dbg_printf("EVICTION: Free zones=%u > %u, not evicting\n", free_zones,
+            //            EVICT_HIGH_THRESH);
             g_usleep(EVICT_SLEEP_US);
             continue;
         }
@@ -444,7 +444,7 @@ evict_task(gpointer user_data) {
         // Will this cause issues if we issue evictions one-by-one?
         for (uint32_t i = 0; i < EVICT_LOW_THRESH - free_zones; i++) {
             int zone =
-                thread_data->cache->eviction_policy.get_zone_to_evict(&cache->eviction_policy);
+                thread_data->cache->eviction_policy.get_zone_to_evict(&cache->eviction_policy.data);
             if (zone == -1) {
                 dbg_printf("No zones to evict\n");
                 break;
