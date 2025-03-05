@@ -207,8 +207,7 @@ static void
 ze_destroy_cache(struct ze_cache *cache) {
     (void) cache;
 
-    // TODO
-    assert(!"Todo: clean up cache");
+    // TODO assert(!"Todo: clean up cache");
 
     /* g_hash_table_destroy(cache->zone_map); */
     /* g_free(cache->zone_state); */

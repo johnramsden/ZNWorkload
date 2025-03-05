@@ -195,12 +195,14 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     }
 
     // Get an active zone
-    dbg_print_g_queue("active,queue", state->active);
+    dbg_print_g_queue("active queue (zone,chunk,state)", state->active, PRINT_G_QUEUE_ZN_ZONE);
     struct zn_zone *active_pair = g_queue_pop_head(state->active);
     assert(active_pair->state == ZN_ZONE_ACTIVE);
 
-    *pair =
-        (struct zn_pair) {.zone = active_pair->zone_id, .chunk_offset = active_pair->chunk_offset};
+    *pair = (struct zn_pair) {
+        .zone = active_pair->zone_id,
+        .chunk_offset = active_pair->chunk_offset
+    };
 
     active_pair->state = ZN_ZONE_WRITE_OCCURING;
     state->writes_occurring++;

@@ -50,7 +50,7 @@ zn_policy_promotional_get_zone_to_evict(policy_data_t policy) {
 
     g_mutex_lock(&promote_policy->policy_mutex);
 
-    dbg_print_g_queue("lru_queue", &promote_policy->lru_queue);
+    dbg_print_g_queue("lru_queue", &promote_policy->lru_queue, PRINT_G_QUEUE_GINT);
 
     if (g_queue_get_length(&promote_policy->lru_queue) == 0) {
         return -1;

@@ -1,11 +1,19 @@
 #include "znutil.h"
-
 #include "zncache.h"
+#include "zone_state_manager.h"
 
 #include <stdio.h>
+#include <assert.h>
+
+inline static void
+print_g_hash_table_zn_pair(gpointer key, gpointer value) {
+    struct zn_pair *zp = (struct zn_pair *) value;
+    printf("\t%d: (zone=%u, chunk=%u, id=%u, in_use=%s)\n", GPOINTER_TO_INT(key),
+           zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+}
 
 void
-print_g_hash_table(char *name, GHashTable *hash_table) {
+print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_type type) {
     GHashTableIter iter;
     gpointer key, value;
 
@@ -13,20 +21,51 @@ print_g_hash_table(char *name, GHashTable *hash_table) {
 
     g_hash_table_iter_init(&iter, hash_table);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
-        struct zn_pair *zp = (struct zn_pair *) value;
-        printf("\tKey: %d, Value: zone=%u, chunk=%u, id=%u, in_use=%s\n", GPOINTER_TO_INT(key),
-               zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+        switch (type) {
+            case PRINT_G_HASH_TABLE_GINT:
+                print_g_hash_table_zn_pair(key, value); break;
+            default:
+                printf("Inimplemented hash table print type"); break;
+        }
     }
 }
 
+inline static void
+print_g_queue_zn_zone(GList *node) {
+    struct zn_zone *zn = (struct zn_zone *) node->data;
+    char *state_str;
+    switch (zn->state) {
+        case ZN_ZONE_FREE:
+            state_str = "FREE"; break;
+        case ZN_ZONE_FULL:
+            state_str = "FULL"; break;
+        case ZN_ZONE_ACTIVE:
+            state_str = "ACTIVE"; break;
+        case ZN_ZONE_WRITE_OCCURING:
+            state_str = "WRITE_OCCURING"; break;
+        default:
+            assert(!"Invalid zone state");
+    }
+    printf("(%d,%d,%s)", zn->zone_id, zn->chunk_offset, state_str);
+}
+
 void
-print_g_queue(char *name, GQueue *queue) {
+print_g_queue(char *name, const GQueue *queue, const enum print_g_queue_type type) {
     printf("Printing queue %s: ", name);
     for (GList *node = queue->head; node != NULL; node = node->next) {
-        printf("%d ", GPOINTER_TO_INT(node->data));
+        switch (type) {
+            case PRINT_G_QUEUE_ZN_ZONE:
+                print_g_queue_zn_zone(node); break;
+            case PRINT_G_QUEUE_GINT:
+                printf("%d ", GPOINTER_TO_INT(node->data)); break;
+            default:
+                printf("Uninimplemented queue print type"); break;
+        }
     }
     puts("");
 }
+
+
 
 unsigned char *
 generate_random_buffer(size_t size) {
