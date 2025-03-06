@@ -118,7 +118,7 @@ static int
 zone_cap(int fd, uint64_t *zone_capacity) {
     off_t ofst = 0;
     off_t len = 1;
-    struct zbd_zone zone;
+    volatile struct zbd_zone zone;
     unsigned int nr_zones;
     int ret = zbd_report_zones(fd, ofst, len, ZBD_RO_ALL, &zone, &nr_zones);
     if (ret != 0) {
