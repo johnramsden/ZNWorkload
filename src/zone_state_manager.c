@@ -67,7 +67,7 @@ reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     }
 
     unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
-    dbg_printf("Closing zone %u, zone pointer %llu\n", zone->zone_id, wp);
+    dbg_printf("Resetting zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
     // NOTE: FULL ZONES ARE NOT ACTIVE
@@ -235,7 +235,12 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     state->writes_occurring--;
     zone->chunk_offset++;
     if (zone->chunk_offset == state->max_zone_chunks) {
-        close_zone(state, zone);
+        int ret = close_zone(state, zone);
+        if (ret != 0) {
+            dbg_printf("An error occurred while closing the zone\n");
+            g_mutex_unlock(&state->state_mutex);
+            return ret;
+        }
     } else {
         zone->state = ZN_ZONE_ACTIVE;
         g_queue_push_tail(state->active, zone);

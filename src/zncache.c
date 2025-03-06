@@ -444,7 +444,7 @@ evict_task(gpointer user_data) {
         // Will this cause issues if we issue evictions one-by-one?
         for (uint32_t i = 0; i < EVICT_LOW_THRESH - free_zones; i++) {
             int zone =
-                thread_data->cache->eviction_policy.get_zone_to_evict(&cache->eviction_policy.data);
+                thread_data->cache->eviction_policy.get_zone_to_evict(cache->eviction_policy.data);
             if (zone == -1) {
                 dbg_printf("No zones to evict\n");
                 break;

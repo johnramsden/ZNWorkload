@@ -15,7 +15,11 @@ print_g_hash_table_zn_pair(gpointer key, gpointer value) {
 inline static void
 print_g_hash_table_prom_lru_node(gpointer key, gpointer value) {
     GList *node = (GList *) value;
-    printf("[%d: %u], ", GPOINTER_TO_INT(key), GPOINTER_TO_INT(node->data));
+    if (node) {
+		printf("[%d: %u], ", GPOINTER_TO_INT(key), GPOINTER_TO_INT(node->data));
+    } else {
+		printf("[%d: %s], ", GPOINTER_TO_INT(key), "NULL");
+    }
 }
 
 void
