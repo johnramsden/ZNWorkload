@@ -579,6 +579,8 @@ main(int argc, char **argv) {
 
         info.nr_zones = ((long) size / BLOCK_ZONE_CAPACITY);
         info.max_nr_active_zones = 0;
+        
+        dbg_printf("SSD NYI\n"); return 0; // TODO
     }
 
     if (fd < 0) {
