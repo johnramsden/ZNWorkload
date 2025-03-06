@@ -2,6 +2,7 @@
 #define ZNCACHE_H
 
 #include <stdint.h>
+#include <stdbool.h> // Needed on old C (actions, cortes)
 
 /**
  * @struct zn_pair
