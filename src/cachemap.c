@@ -133,7 +133,7 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
         assert(res->value.location.zone == zone);
 
         // Erase the entry and free the zone_map_result memory
-        g_hash_table_replace(map->zone_map, GINT_TO_POINTER(data_id), NULL);
+        g_hash_table_remove(map->zone_map, GINT_TO_POINTER(data_id));
         g_free(res);
     }
 
