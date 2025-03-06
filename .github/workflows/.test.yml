@@ -88,7 +88,7 @@ jobs:
           set -e  # Exit on first error
           cd ZNWorkload
           sudo ./scripts/nullblk.sh 4096 1 0 14 "zns"
-          sudo ./buildDir/src/ze_cache /dev/nullb0 524288 2
+          sudo ./buildDir/src/zncache /dev/nullb0 524288 2
           sudo ./scripts/nullblk-zoned-delete.sh 0
           EOF
 
@@ -99,6 +99,6 @@ jobs:
           set -e  # Exit on first error
           cd ZNWorkload
           sudo ./scripts/nullblk.sh 4096 1 0 14 "ssd"
-          sudo ./buildDir/src/ze_cache /dev/nullb0 524288 2
+          sudo ./buildDir/src/zncache /dev/nullb0 524288 2
           sudo ./scripts/nullblk-zoned-delete.sh 0
           EOF
