@@ -18,6 +18,16 @@
 #define CHUNK_POINTER(z_sz, c_sz, c_num, z_num)                                                    \
     (((uint64_t) (z_sz) * (uint64_t) (z_num)) + ((uint64_t) (c_num) * (uint64_t) (c_sz)))
 
+enum print_g_queue_type {
+    PRINT_G_QUEUE_GINT = 0,
+    PRINT_G_QUEUE_ZN_ZONE = 1
+};
+
+enum print_g_hash_table_type {
+    PRINT_G_HASH_TABLE_GINT = 0,
+    PRINT_G_HASH_TABLE_PROM_LRU_NODE = 1
+};
+
 /**
  * @brief Prints all key-value pairs in a GHashTable.
  *
@@ -28,10 +38,10 @@
  * @param hash_table A pointer to the GHashTable to print.
  */
 void
-print_g_hash_table(char *name, GHashTable *hash_table);
+print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_type type);
 
 #ifdef DEBUG
-#    define dbg_print_g_hash_table(name, hash_table) print_g_hash_table(name, hash_table)
+#    define dbg_print_g_hash_table(name, hash_table, type) print_g_hash_table(name, hash_table, type)
 #else
 #    define dbg_print_g_hash_table(...)
 #endif
@@ -44,10 +54,10 @@ print_g_hash_table(char *name, GHashTable *hash_table);
  * @param queue A pointer to the GQueue to print.
  */
 void
-print_g_queue(char *name, GQueue *queue);
+print_g_queue(char *name, const GQueue *queue, enum print_g_queue_type type);
 
 #ifdef DEBUG
-#    define dbg_print_g_queue(name, queue) print_g_queue(name, queue)
+#    define dbg_print_g_queue(name, queue, type) print_g_queue(name, queue, type)
 #else
 #    define dbg_print_g_queue(...)
 #endif
