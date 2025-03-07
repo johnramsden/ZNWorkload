@@ -33,7 +33,10 @@
 #define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
 
-#define BLOCK_ZONE_CAPACITY ((long) 1077 * 1024 * 1024)
+// Temporary. For disks with small capacity, it needs a small zone size as well
+// It will allow the min-workload example to run
+/* #define BLOCK_ZONE_CAPACITY ((long) 1077 * 1024 * 1024) */
+#define BLOCK_ZONE_CAPACITY ((long) 1024 * 1024)
 
 // No evict
 #define NR_WORKLOADS 4
@@ -72,7 +75,6 @@ struct ze_cache {
     enum ze_backend backend;      /**< SSD backend. */
     int fd;                       /**< File descriptor for associated disk. */
     uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
-    uint32_t nr_active_zones;     /**< Current number of active zones. */
     uint32_t nr_zones;            /**< Total number of zones availible. */
     uint64_t max_zone_chunks;     /**< Maximum number of chunks a zone can hold. */
     size_t chunk_sz;              /**< Size of each chunk in bytes. */
@@ -160,7 +162,6 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->zone_cap = zone_cap;
     cache->max_nr_active_zones =
         info->max_nr_active_zones == 0 ? MAX_OPEN_ZONES : info->max_nr_active_zones;
-    cache->nr_active_zones = 0;
     cache->zone_cap = zone_cap;
     cache->max_zone_chunks = zone_cap / chunk_sz;
     cache->backend = backend;
@@ -179,7 +180,7 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
     zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks);
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
-             cache->max_nr_active_zones);
+             cache->max_nr_active_zones, cache->backend);
 
     g_mutex_init(&cache->reader.lock);
     cache->reader.query_index = 0;
@@ -576,10 +577,12 @@ main(int argc, char **argv) {
             return -1;
         }
 
+        if (size > BLOCK_ZONE_CAPACITY) {
+            assert(!"The size of the disk is smaller than a single zone!");
+        }
         info.nr_zones = ((long) size / BLOCK_ZONE_CAPACITY);
         info.max_nr_active_zones = 0;
         
-        dbg_printf("SSD NYI\n"); return 0; // TODO
     }
 
     if (fd < 0) {
