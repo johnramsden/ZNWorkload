@@ -321,6 +321,32 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
     return data;
 }
 
+static void
+fg_evict(struct ze_cache *cache) {
+    dbg_printf("EVICTING\n");
+    uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
+    for (uint32_t i = 0; i < EVICT_LOW_THRESH - free_zones; i++) {
+        int zone =
+            cache->eviction_policy.get_zone_to_evict(cache->eviction_policy.data);
+        if (zone == -1) {
+            dbg_printf("No zones to evict\n");
+            break;
+        }
+
+        zn_cachemap_clear_zone(&cache->cache_map, zone);
+        while (cache->active_readers[zone] > 0) {
+            g_thread_yield();
+        }
+
+        // We can assume that no threads will create entries to the zone in the cache map,
+        // because it is full.
+        int ret = zsm_evict(&cache->zone_state, zone);
+        if (ret != 0) {
+            assert(!"Issue occurred with evicting zones\n");
+        }
+    }
+}
+
 /**
  * @brief Get data from cache
  *
@@ -352,12 +378,14 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         struct zn_pair location;
         while (true) {
 
-            int ret = zsm_get_active_zone(&cache->zone_state, &location);
+            enum zsm_get_active_zone_error ret = zsm_get_active_zone(&cache->zone_state, &location);
 
-            if (ret == 1) {
+            if (ret == ZSM_GET_ACTIVE_ZONE_RETRY) {
                 g_thread_yield();
-            } else if (ret == -1) {
+            } else if (ret == ZSM_GET_ACTIVE_ZONE_ERROR) {
                 goto UNDO_MAP;
+            } else if (ret == ZSM_GET_ACTIVE_ZONE_EVICT) {
+                fg_evict(cache);
             } else {
                 break;
             }
@@ -448,27 +476,7 @@ evict_task(gpointer user_data) {
 
         assert(EVICT_LOW_THRESH - free_zones > 0);
 
-        // Will this cause issues if we issue evictions one-by-one?
-        for (uint32_t i = 0; i < EVICT_LOW_THRESH - free_zones; i++) {
-            int zone =
-                thread_data->cache->eviction_policy.get_zone_to_evict(cache->eviction_policy.data);
-            if (zone == -1) {
-                dbg_printf("No zones to evict\n");
-                break;
-            }
-
-            zn_cachemap_clear_zone(&cache->cache_map, zone);
-            while (cache->active_readers[zone] > 0) {
-                g_thread_yield();
-            }
-
-            // We can assume that no threads will create entries to the zone in the cache map,
-            // because it is full.
-            int ret = zsm_evict(&cache->zone_state, zone);
-            if (ret != 0) {
-                assert(!"Issue occurred with evicting zones\n");
-            }
-        }
+        fg_evict(cache);
     }
 
     printf("Evict task completed by thread %p\n", (void *) g_thread_self());

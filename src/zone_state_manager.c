@@ -147,7 +147,7 @@ zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int f
     }
 }
 
-int
+enum zsm_get_active_zone_error
 zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     assert(state);
     assert(pair);
@@ -160,12 +160,8 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
 
     // Perform foreground eviction
     if ((active_queue_size + writer_size) == 0 && free_queue_size == 0) {
-        // TODO, need to figure out how to call eviction stuff from
-        // here, and ensure deadlocks are avoided. May need to store
-        // the cache or other subsystems here... bad design? Could
-        // also return failure and tell the caller that it needs to do
-        // eviction
-        assert(!"TODO: Foreground eviction");
+        g_mutex_unlock(&state->state_mutex);
+        return ZSM_GET_ACTIVE_ZONE_EVICT;
     }
 
     assert((active_queue_size + writer_size) > 0 || free_queue_size > 0);
@@ -184,13 +180,13 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
             if (ret) {
                 dbg_printf("Failed to open zone: %d with error: %d\n", new_zone->zone_id, ret);
                 g_mutex_unlock(&state->state_mutex);
-                return ret;
+                return ZSM_GET_ACTIVE_ZONE_ERROR;
             }
 
         } else {
             // The thread needs to wait for a free zone
             g_mutex_unlock(&state->state_mutex);
-            return 1;
+            return ZSM_GET_ACTIVE_ZONE_RETRY;
         }
     }
 
@@ -208,7 +204,7 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     state->writes_occurring++;
 
     g_mutex_unlock(&state->state_mutex);
-    return 0;
+    return ZSM_GET_ACTIVE_ZONE_SUCCESS;
 }
 
 // TODO
