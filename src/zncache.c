@@ -61,15 +61,6 @@ struct ze_reader {
 };
 
 /**
- * @enum ze_backend
- * @brief Defines SSD backends
- */
-enum ze_backend {
-    ZE_BACKEND_ZNS = 0,   /**< ZNS SSD backend. */
-    ZE_BACKEND_BLOCK = 1, /**< Block-interface backend. */
-};
-
-/**
  * @struct ze_cache
  * @brief Represents a cache system that manages data storage in predefined zones.
  *

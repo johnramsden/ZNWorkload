@@ -18,4 +18,15 @@ struct zn_pair {
     bool in_use;           /**< Defines if ze_pair is in use. */
 };
 
+
+/**
+ * @enum ze_backend
+ * @brief Defines SSD backends
+ */
+enum ze_backend {
+    ZE_BACKEND_ZNS = 0,   /**< ZNS SSD backend. */
+    ZE_BACKEND_BLOCK = 1, /**< Block-interface backend. */
+};
+
+
 #endif // ZNCACHE_H
