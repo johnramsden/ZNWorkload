@@ -18,7 +18,7 @@ verify_enabled = get_option('verify')
 debug_enabled = get_option('debugging')
 
 # Conditional compiler flags
-cflags = []
+cflags = ['-O2']
 if verify_enabled
     cflags += ['-DVERIFY']
 endif
@@ -36,3 +36,4 @@ inc_dir = include_directories('include')
 
 # Add the src subdirectory
 subdir('src')
+subdir('tests')
