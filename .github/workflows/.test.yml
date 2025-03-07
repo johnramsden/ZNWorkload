@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install QEMU
         run: |
@@ -21,11 +23,11 @@ jobs:
 
       - name: Download Ubuntu Cloud Image
         run: |
-          wget -O ubuntu.qcow2 https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img -o /dev/null
+          wget -O /tmp/ubuntu.qcow2 https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img -o /dev/null
 
       - name: Resize Ubuntu QEMU Disk
         run: |
-          qemu-img resize ubuntu.qcow2 12G
+          qemu-img resize /tmp/ubuntu.qcow2 12G
 
       - name: Create Cloud-Init Disk
         run: |
@@ -36,7 +38,7 @@ jobs:
           ssh_pwauth: True
           EOF
 
-          cloud-localds cloud-init.iso user-data
+          cloud-localds /tmp/cloud-init.iso user-data
 
       - name: Run QEMU VM with Ubuntu
         run: |
@@ -45,8 +47,8 @@ jobs:
             -m 12G \
             -smp 2 \
             -cpu host \
-            -drive file=ubuntu.qcow2,format=qcow2,if=virtio \
-            -drive file=cloud-init.iso,format=raw,if=virtio \
+            -drive file=/tmp/ubuntu.qcow2,format=qcow2,if=virtio \
+            -drive file=/tmp/cloud-init.iso,format=raw,if=virtio \
             -net user,hostfwd=tcp::2222-:22 \
             -net nic \
             -nographic &
@@ -74,10 +76,11 @@ jobs:
 
       - name: Build Code in QEMU
         run: |
+          sshpass -p "ubuntu" scp -o StrictHostKeyChecking=no -P 2222 -r $GITHUB_WORKSPACE ubuntu@127.0.0.1:/home/ubuntu/ZNWorkload
           sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
-          git clone https://github.com/johnramsden/ZNWorkload.git --recursive
           cd ZNWorkload
           ./build-deps.sh
+          find .
           meson setup buildDir
           meson compile -C buildDir
           EOF
@@ -101,4 +104,16 @@ jobs:
           sudo ./scripts/nullblk.sh 4096 1 0 14 "ssd"
           sudo ./buildDir/src/zncache /dev/nullb0 524288 2
           sudo ./scripts/nullblk-zoned-delete.sh 0
+          EOF
+
+      - name: Run Test Suite
+        run: |
+          sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
+          cd ZNWorkload
+          meson test -C buildDir --list
+          if ! meson test -C buildDir; then
+              [ -f ./buildDir/meson-logs/testlog.txt ] && cat ./buildDir/meson-logs/testlog.txt
+              exit 1
+          fi
+          [ -f ./buildDir/meson-logs/testlog.txt ] && cat ./buildDir/meson-logs/testlog.txt
           EOF

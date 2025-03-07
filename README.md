@@ -81,7 +81,7 @@ On SSD:
 ```
 
 ```shell
-./ze_cache /dev/nullb0 524288 2
+./zncache /dev/nullb0 524288 2
 ```
 
 This means 2chunks to fill a zone: `1024*1024/2`
