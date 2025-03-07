@@ -18,7 +18,7 @@ verify_enabled = get_option('verify')
 debug_enabled = get_option('debugging')
 
 # Conditional compiler flags
-cflags = ['-O2']
+cflags = []
 if verify_enabled
     cflags += ['-DVERIFY']
 endif

@@ -20,6 +20,17 @@ enum zn_zone_condition {
 };
 
 /**
+ * @enum zsm_get_active_zone_error
+ * @brief Error types for zsm_get_active_zone
+ */
+enum zsm_get_active_zone_error {
+    ZSM_GET_ACTIVE_ZONE_SUCCESS = 0,  /**< Success */
+    ZSM_GET_ACTIVE_ZONE_RETRY = 2,    /**< Thread needs to retry later */
+    ZSM_GET_ACTIVE_ZONE_ERROR = 3,    /**< Error occurred */
+    ZSM_GET_ACTIVE_ZONE_EVICT = 4     /**< Thread needs to evict */
+};
+
+/**
  * @struct zn_zone
  * @brief Stores the state of a zone.
  */
@@ -76,7 +87,7 @@ zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int f
  *  - Increment the corresponding chunk pointer to point to the next free zone
  *  - If chunk pointer reaches the end, move zone to full list
  */
-int
+enum zsm_get_active_zone_error
 zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair);
 
 /** @brief Not yet thought out well, but a function for host-side gc (when we need to relocate a
