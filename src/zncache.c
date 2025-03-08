@@ -1,5 +1,6 @@
 // For pread
 #define _XOPEN_SOURCE 500
+#include <string.h>
 #include "zncache.h"
 
 #include "cachemap.h"
@@ -86,6 +87,7 @@ struct ze_cache {
     uint64_t max_zone_chunks;     /**< Maximum number of chunks a zone can hold. */
     size_t chunk_sz;              /**< Size of each chunk in bytes. */
     uint64_t zone_cap;            /**< Maximum storage capacity per zone in bytes. */
+    int workload_fd;
 
     struct zn_cachemap cache_map;
     struct zn_evict_policy eviction_policy;
@@ -162,7 +164,7 @@ ze_print_cache(struct ze_cache *cache) {
  */
 static void
 ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum ze_backend backend) {
+              int fd, enum zn_evict_policy_type policy, enum ze_backend backend, int workload_fd) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -174,6 +176,7 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->max_zone_chunks = zone_cap / chunk_sz;
     cache->backend = backend;
     cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
+	cache->workload_fd = workload_fd;
 
 #ifdef DEBUG
     printf("Initialized cache:\n");
@@ -498,40 +501,63 @@ task_function(gpointer data, gpointer user_data) {
     while (true) {
         g_mutex_lock(&thread_data->cache->reader.lock);
 
-        // When we exceed Query number, go next workload
-        // The query that we're on
-        if (thread_data->cache->reader.query_index >= NR_QUERY) {
-            thread_data->cache->reader.query_index = 0;
-            thread_data->cache->reader.workload_index++;
+        uint32_t data_id = 0;
+
+        if (thread_data->cache->workload_fd != -1) {
+            int32_t buf;
+            int amnt_read = read(thread_data->cache->workload_fd, &buf, sizeof(uint32_t));
+            if (amnt_read == 0) {
+                g_mutex_unlock(&thread_data->cache->reader.lock);
+                break;
+            } else if (amnt_read == 4) {
+				memcpy(&data_id, &buf, sizeof(uint32_t));
+            } else {
+                assert(!"Error occurred when reading workload");
+            }
+
+			printf("[%d]: ze_cache_get(workload[%d]=%d)\n", thread_data->tid, thread_data->cache->reader.workload_index,
+				   data_id);
+			thread_data->cache->reader.workload_index++;
+			g_mutex_unlock(&thread_data->cache->reader.lock);
+			
+        } else {		
+			// When we exceed Query number, go next workload
+			// The query that we're on
+			if (thread_data->cache->reader.query_index >= NR_QUERY) {
+				thread_data->cache->reader.query_index = 0;
+				thread_data->cache->reader.workload_index++;
+			}
+
+			// We finished reading all the workloads
+			if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
+				g_mutex_unlock(&thread_data->cache->reader.lock);
+				break;
+			}
+
+			// Increment the query index
+			uint32_t qi = thread_data->cache->reader.query_index++;
+			uint32_t wi = thread_data->cache->reader.workload_index;
+			g_mutex_unlock(&thread_data->cache->reader.lock);
+
+			// Assertions to validate state
+			assert(qi < NR_QUERY);
+            assert(wi < NR_WORKLOADS);
+            
+			printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
+				   simple_workload[wi][qi]);
+
+			data_id = simple_workload[wi][qi];
         }
-
-        // We finished reading all the workloads
-        if (thread_data->cache->reader.workload_index >= NR_WORKLOADS) {
-            g_mutex_unlock(&thread_data->cache->reader.lock);
-            break;
-        }
-
-        // Increment the query index
-        uint32_t qi = thread_data->cache->reader.query_index++;
-        uint32_t wi = thread_data->cache->reader.workload_index;
-        g_mutex_unlock(&thread_data->cache->reader.lock);
-
-        // Assertions to validate state
-        assert(qi < NR_QUERY);
-        assert(wi < NR_WORKLOADS);
-
         // Find the data in the cache
-        unsigned char *data = ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
+        unsigned char *data = ze_cache_get(thread_data->cache, data_id);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data\n");
             return;
         }
 #ifdef VERIFY
-        assert(ze_validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
+        assert(ze_validate_read(thread_data->cache, data, data_id) == 0);
 #endif
         free(data);
-        printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
-               simple_workload[wi][qi]);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
 }
@@ -540,8 +566,8 @@ int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    if (argc != 4) {
-        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS>\n", argv[0]);
+    if (argc < 4 || argc > 5) {
+        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [workload]\n", argv[0]);
         return -1;
     }
 
@@ -556,14 +582,25 @@ main(int argc, char **argv) {
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
 
+    int workload_fd = -1;
+    if (argc == 5) {
+
+        printf("Attempting to read %s\n", argv[4]);
+        workload_fd = open(argv[4], O_RDONLY);
+        if (workload_fd == -1) {
+            printf("Couldn't read workload file\n");
+            return 1;
+        }
+    }
+
     printf("Running with configuration:\n"
            "\tDevice name: %s\n"
            "\tDevice type: %s\n"
            "\tChunk size: %lu\n"
            "\tWorker threads: %u\n"
-           "\tEviction threads: %u\n",
-           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads,
-           nr_eviction_threads);
+           "\tEviction threads: %u\n"
+           "\tWorkload file: %s\n",           
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -619,7 +656,7 @@ main(int argc, char **argv) {
     }
 
     struct ze_cache cache = {0};
-    ze_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type);
+    ze_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_fd);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
