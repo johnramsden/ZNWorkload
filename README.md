@@ -23,15 +23,16 @@ meson setup buildDir
 meson compile -C buildDir
 ```
 
-There are two variables that can be set:
+There are three variables that can be set:
 
 * `DEBUG`: Enables debug output (default true)
 * `VERIFY`: Enables correctness verification (default true)
+* `BLOCK_ZONE_CAPACITY`: Sets SSD zone size (default 1077MiB 1129316352)
 
 To modify these:
 
 ```shell
-meson setup --reconfigure buildDir -Dverify=false -Ddebugging=false
+meson setup --reconfigure buildDir -Dverify=true -Ddebugging=true -DBLOCK_ZONE_CAPACITY=1048576
 meson compile -C buildDir
 ```
 

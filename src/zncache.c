@@ -33,10 +33,7 @@
 #define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
 
-// Temporary. For disks with small capacity, it needs a small zone size as well
-// It will allow the min-workload example to run
-/* #define BLOCK_ZONE_CAPACITY ((long) 1077 * 1024 * 1024) */
-#define BLOCK_ZONE_CAPACITY ((long) 1024 * 1024)
+// BLOCK_ZONE_CAPACITY Defined at compile-time
 
 // No evict
 #define NR_WORKLOADS 4
@@ -552,9 +549,10 @@ main(int argc, char **argv) {
            "\tDevice name: %s\n"
            "\tDevice type: %s\n"
            "\tChunk size: %lu\n"
+           "\tBLOCK_ZONE_CAPACITY: %u\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n",
-           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads,
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, BLOCK_ZONE_CAPACITY, nr_threads,
            nr_eviction_threads);
 
 #ifdef DEBUG
@@ -577,7 +575,7 @@ main(int argc, char **argv) {
             return -1;
         }
 
-        if (size > BLOCK_ZONE_CAPACITY) {
+        if (size < BLOCK_ZONE_CAPACITY) {
             assert(!"The size of the disk is smaller than a single zone!");
         }
         info.nr_zones = ((long) size / BLOCK_ZONE_CAPACITY);
