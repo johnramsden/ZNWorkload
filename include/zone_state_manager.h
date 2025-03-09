@@ -61,6 +61,7 @@ struct zone_state_manager {
     uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
     uint64_t max_zone_chunks;     /**< Maximum amount of chunks that a zone can store */
     uint32_t num_zones;           /**< Number of zones */
+	enum ze_backend backend_type; /**< The type of backend */
 };
 
 /**
@@ -71,11 +72,13 @@ struct zone_state_manager {
  * @param[in]  fd file descriptor of the disk
  * @param[in]  zone_cap capacity of the zone in bytes
  * @param[in]  chunk_size size of the chunk in bytes
+ * @param[in]  backend_type the type of SSD that is backing the zones
  *
  */
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
-         const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones);
+         const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones,
+         const enum ze_backend backend_type);
 
 /** @brief Returns a new chunk that a thread can write to
  *  @param[in]  state zone_state data structure

@@ -3,6 +3,7 @@
 #include "assert.h"
 #include "glib.h"
 #include "libzbd/zbd.h"
+#include "zncache.h"
 #include "znutil.h"
 
 #include <stdint.h>
@@ -34,12 +35,16 @@ close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     //     printf("Zone state before close: %u\n", zone.cond == ZBD_ZONE_COND_FULL);
     // }
 
-    // NOTE: FULL ZONES ARE NOT ACTIVE
-    int ret = zbd_finish_zones(state->fd, wp, state->zone_cap);
-    if (ret != 0) {
-        dbg_printf("Failed to close zone %u\n", zone->zone_id);
-        return ret;
-    }
+	int ret = 0;
+    if (state->backend_type == ZE_BACKEND_ZNS) {
+		// NOTE: FULL ZONES ARE NOT ACTIVE
+		ret = zbd_finish_zones(state->fd, wp, state->zone_cap);
+		if (ret != 0) {
+			dbg_printf("Failed to close zone %u\n", zone->zone_id);
+			return ret;
+		}
+	}
+
     // EXPLICIT CLOSE FAILS ON NULLBLK, TODO: TEST ON REAL DEV ON CORTES
     // ret = zbd_close_zones(cache->fd, wp, cache->zone_cap);
     // if (ret != 0) {
@@ -70,13 +75,16 @@ reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     dbg_printf("Resetting zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    // NOTE: FULL ZONES ARE NOT ACTIVE
-    int ret = zbd_reset_zones(state->fd, wp, state->zone_cap);
-    if (ret != 0) {
-        dbg_printf("Failed to close zone %u\n", zone->zone_id);
-        return ret;
+    int ret = 0;
+    if (state->backend_type == ZE_BACKEND_ZNS) {
+		// NOTE: FULL ZONES ARE NOT ACTIVE
+		ret = zbd_reset_zones(state->fd, wp, state->zone_cap);
+		if (ret != 0) {
+			dbg_printf("Failed to close zone %u\n", zone->zone_id);
+			return ret;
+		}
     }
-
+    
     zone->state = ZN_ZONE_FREE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->free, zone);
@@ -105,14 +113,16 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
         return -1;
     }
 
-    unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
-    dbg_printf("Opening zone %u, zone pointer %llu\n", zone->zone_id, wp);
+	if (state->backend_type == ZE_BACKEND_ZNS) {
+		unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+		dbg_printf("Opening zone %u, zone pointer %llu\n", zone->zone_id, wp);
 
-    int ret = zbd_open_zones(state->fd, wp, 1);
-    if (ret != 0) {
-        return ret;
+		int ret = zbd_open_zones(state->fd, wp, 1);
+		if (ret != 0) {
+			return ret;
+		}
     }
-
+    
     zone->state = ZN_ZONE_ACTIVE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->active, zone);
@@ -122,7 +132,9 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
-         const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones) {
+         const uint64_t zone_cap, const size_t chunk_size,
+         const uint32_t max_nr_active_zones,
+         const enum ze_backend backend_type) {
     assert(state);
     state->fd = fd;
     state->zone_cap = zone_cap;
@@ -131,6 +143,7 @@ zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int f
     state->max_nr_active_zones = max_nr_active_zones;
     state->writes_occurring = 0;
     state->num_zones = num_zones;
+    state->backend_type = backend_type;
 
     g_mutex_init(&state->state_mutex);
 
@@ -272,7 +285,7 @@ zsm_failed_to_write(struct zone_state_manager *state, struct zn_pair pair) {
     assert(state);
 
     g_mutex_lock(&state->state_mutex);
-    assert(zsm_get_num_active_zones(state) <= state->max_nr_active_zones);
+    assert(g_queue_get_length(state->active) + state->writes_occurring <= state->max_nr_active_zones);
 
     struct zn_zone *zone = &state->state[pair.zone];
     assert(zone->state == ZN_ZONE_WRITE_OCCURING);

@@ -16,9 +16,10 @@ zbd_lib = declare_dependency(
 # Read options
 verify_enabled = get_option('verify')
 debug_enabled = get_option('debugging')
+BLOCK_ZONE_CAPACITY = get_option('BLOCK_ZONE_CAPACITY')
 
 # Conditional compiler flags
-cflags = []
+cflags = ['-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string()]
 if verify_enabled
     cflags += ['-DVERIFY']
 endif

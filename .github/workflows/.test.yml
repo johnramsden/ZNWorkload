@@ -81,7 +81,7 @@ jobs:
           cd ZNWorkload
           ./build-deps.sh
           find .
-          meson setup buildDir
+          meson setup buildDir -Dverify=true -Ddebugging=true -DBLOCK_ZONE_CAPACITY=1048576
           meson compile -C buildDir
           EOF
 

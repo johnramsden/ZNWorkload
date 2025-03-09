@@ -1,2 +1,3 @@
 option('verify', type : 'boolean', value : true, description : 'Enable verify mode')
 option('debugging', type : 'boolean', value : true, description : 'Enable debug mode')
+option('BLOCK_ZONE_CAPACITY', type : 'integer', value : 1129316352, description : 'Set SSD zone size (default is 1077MiB)')
