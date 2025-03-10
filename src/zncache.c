@@ -24,7 +24,7 @@
 
 #define EVICT_HIGH_THRESH 2
 #define EVICT_LOW_THRESH 4
-#define EVICTION_POLICY ZN_EVICT_PROMOTE_ZONE
+#define EVICTION_POLICY ZN_EVICT_CHUNK
 
 #define MICROSECS_PER_SECOND 1000000
 #define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
@@ -175,7 +175,7 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 
     // Set up the data structures
     zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
-    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks);
+    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks, cache->nr_zones);
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 
@@ -351,8 +351,11 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
     struct zone_map_result result = zn_cachemap_find(&cache->cache_map, id);
 
+
+
     // Found the entry, read it from disk, update eviction, and decrement reader.
     if (result.type == RESULT_LOC) {
+        assert(result.value.location.zone >= 0 && result.value.location.zone < cache->nr_zones);
         unsigned char *data = ze_read_from_disk(cache, &result.value.location);
         cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
                                              ZN_READ);
@@ -396,6 +399,8 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         zn_cachemap_insert(&cache->cache_map, id, location);
 
         zsm_return_active_zone(&cache->zone_state, &location);
+
+        assert(location.zone >= 0 && location.zone < cache->nr_zones);
 
         cache->eviction_policy.update_policy(cache->eviction_policy.data, location, ZN_WRITE);
 

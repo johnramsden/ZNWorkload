@@ -38,9 +38,9 @@ struct zn_zone {
     enum zn_zone_condition state;
     uint32_t zone_id;
     uint32_t chunk_offset;
+    GQueue *invalid; /**< Invalidated chunks, used after filled on SSD */
 };
 
-// TODO: Make it work on regular SSDs as well
 /**
  * @struct zone_state_manager
  * @brief Stores the state of all zones on a ZNS SSD.

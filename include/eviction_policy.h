@@ -66,4 +66,4 @@ struct zn_chunk_evict_policy {
  */
 void
 zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type,
-                     uint32_t zone_max_chunks);
+                     uint32_t zone_max_chunks, uint32_t nr_zones);

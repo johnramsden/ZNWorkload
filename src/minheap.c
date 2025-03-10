@@ -182,8 +182,7 @@ zn_minheap_extract_min(struct zn_minheap *heap)
 int
 zn_minheap_update_by_entry(struct zn_minheap *heap,
                            struct zn_minheap_entry *entry,
-                           uint32_t new_priority)
-{
+                           uint32_t new_priority) {
     g_mutex_lock(&heap->mutex);
 
     if (!entry || entry->index >= heap->size) {
