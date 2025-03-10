@@ -8,8 +8,12 @@
 inline static void
 print_g_hash_table_zn_pair(gpointer key, gpointer value) {
     struct zn_pair *zp = (struct zn_pair *) value;
-    printf("[%d: (zone=%u, chunk=%u, id=%u, in_use=%s)], ", GPOINTER_TO_INT(key),
-           zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+    if (zp) {
+        printf("[%d: (zone=%u, chunk=%u, id=%u, in_use=%s)], ", GPOINTER_TO_INT(key),
+               zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+    } else {
+        printf("[%d: (NULL)], ", GPOINTER_TO_INT(key));
+    }
 }
 
 inline static void
@@ -19,6 +23,18 @@ print_g_hash_table_prom_lru_node(gpointer key, gpointer value) {
 		printf("[%d: %u], ", GPOINTER_TO_INT(key), GPOINTER_TO_INT(node->data));
     } else {
 		printf("[%d: %s], ", GPOINTER_TO_INT(key), "NULL");
+    }
+}
+
+inline static void
+print_g_hash_table_zn_pair_node(gpointer key, gpointer value) {
+    GList *node = (GList *) value;
+    if (node) {
+        struct zn_pair *zp = node->data;
+		printf("[%p: (zone=%u, chunk=%u, id=%u, in_use=%s)], ",
+		       key, zp->zone, zp->chunk_offset, zp->id, zp->in_use ? "true" : "false");
+    } else {
+		printf("[%p: (%s)], ", key, "NULL");
     }
 }
 
@@ -34,6 +50,10 @@ print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_t
         switch (type) {
             case PRINT_G_HASH_TABLE_GINT:
                 print_g_hash_table_zn_pair(key, value); break;
+            case PRINT_G_HASH_TABLE_ZN_PAIR:
+                print_g_hash_table_zn_pair(key, value); break;
+            case PRINT_G_HASH_TABLE_ZN_PAIR_NODE:
+                print_g_hash_table_zn_pair_node(key, value); break;
             case PRINT_G_HASH_TABLE_PROM_LRU_NODE:
                 print_g_hash_table_prom_lru_node(key, value); break;
             default:
@@ -60,7 +80,13 @@ print_g_queue_zn_zone(GList *node) {
         default:
             assert(!"Invalid zone state");
     }
-    printf("(%d,%d,%s)", zn->zone_id, zn->chunk_offset, state_str);
+    printf("(%d,%d,%s), ", zn->zone_id, zn->chunk_offset, state_str);
+}
+
+inline static void
+print_g_queue_zn_pair(GList *node) {
+    struct zn_pair *zn = (struct zn_pair *) node->data;
+    printf("(%u,%u,%u,%s), ", zn->zone, zn->chunk_offset, zn->id, zn->in_use ? "true" : "false");
 }
 
 void
@@ -70,6 +96,8 @@ print_g_queue(char *name, const GQueue *queue, const enum print_g_queue_type typ
         switch (type) {
             case PRINT_G_QUEUE_ZN_ZONE:
                 print_g_queue_zn_zone(node); break;
+            case PRINT_G_QUEUE_ZN_PAIR:
+                print_g_queue_zn_pair(node); break;
             case PRINT_G_QUEUE_GINT:
                 printf("%d ", GPOINTER_TO_INT(node->data)); break;
             default:

@@ -20,12 +20,15 @@
 
 enum print_g_queue_type {
     PRINT_G_QUEUE_GINT = 0,
-    PRINT_G_QUEUE_ZN_ZONE = 1
+    PRINT_G_QUEUE_ZN_ZONE = 1,
+    PRINT_G_QUEUE_ZN_PAIR = 2,
 };
 
 enum print_g_hash_table_type {
     PRINT_G_HASH_TABLE_GINT = 0,
-    PRINT_G_HASH_TABLE_PROM_LRU_NODE = 1
+    PRINT_G_HASH_TABLE_PROM_LRU_NODE = 1,
+    PRINT_G_HASH_TABLE_ZN_PAIR = 2,
+    PRINT_G_HASH_TABLE_ZN_PAIR_NODE = 3,
 };
 
 /**

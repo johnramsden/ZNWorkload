@@ -10,12 +10,14 @@
 int test_single_insert_extract() {
     struct zn_minheap *heap = zn_minheap_init(4);
 
-    zn_minheap_insert(heap, 42, 10);
-    struct zn_minheap_entry result = zn_minheap_extract_min(heap);
+    int d = 42;
+
+    zn_minheap_insert(heap, &d, 10);
+    struct zn_minheap_entry *result = zn_minheap_extract_min(heap);
 
     zn_minheap_destroy(heap);
 
-    if (!result.hasdata || result.data != 42 || result.priority != 10) {
+    if (!result || *((int *)result->data) != 42 || result->priority != 10) {
         return 1;  // Failure
     }
     return 0;  // Success
@@ -28,24 +30,32 @@ int test_single_insert_extract() {
 int test_multiple_insert_extract() {
     struct zn_minheap *heap = zn_minheap_init(4);
 
-    zn_minheap_insert(heap, 100, 3);
-    zn_minheap_insert(heap, 200, 1);
-    zn_minheap_insert(heap, 300, 2);
-    zn_minheap_insert(heap, 400, 0);
+    uint32_t entries = 4;
 
-    struct zn_minheap_entry result;
+    int *d = malloc(sizeof(int) * entries);
+
+    for (int i = 0; i < entries; i++) {
+        d[i] = (i+1)*100; // 100, 200, 300, 400
+    }
+
+    zn_minheap_insert(heap, &d[0], 3);
+    zn_minheap_insert(heap, &d[1], 1);
+    zn_minheap_insert(heap, &d[2], 2);
+    zn_minheap_insert(heap, &d[3], 0);
+
+    struct zn_minheap_entry * result;
 
     result = zn_minheap_extract_min(heap);
-    if (!result.hasdata || result.data != 400 || result.priority != 0) return 1;
+    if (!result || *((int *)result->data) != 400 || result->priority != 0) return 1;
 
     result = zn_minheap_extract_min(heap);
-    if (!result.hasdata || result.data != 200 || result.priority != 1) return 2;
+    if (!result || *((int *)result->data) != 200 || result->priority != 1) return 2;
 
     result = zn_minheap_extract_min(heap);
-    if (!result.hasdata || result.data != 300 || result.priority != 2) return 3;
+    if (!result || *((int *)result->data) != 300 || result->priority != 2) return 3;
 
     result = zn_minheap_extract_min(heap);
-    if (!result.hasdata || result.data != 100 || result.priority != 3) return 4;
+    if (!result || *((int *)result->data) != 100 || result->priority != 3) return 4;
 
     zn_minheap_destroy(heap);
     return 0;  // Success
@@ -58,10 +68,10 @@ int test_multiple_insert_extract() {
 int test_extract_empty_heap() {
     struct zn_minheap *heap = zn_minheap_init(4);
 
-    struct zn_minheap_entry result = zn_minheap_extract_min(heap);
+    struct zn_minheap_entry *result = zn_minheap_extract_min(heap);
     zn_minheap_destroy(heap);
 
-    if (result.hasdata) {
+    if (result != NULL) {
         return 1;  // Failure (should be empty)
     }
     return 0;  // Success
@@ -74,13 +84,21 @@ int test_extract_empty_heap() {
 int test_heap_expansion() {
     struct zn_minheap *heap = zn_minheap_init(2); // Small initial size
 
-    for (uint32_t i = 0; i < 10; i++) {
-        zn_minheap_insert(heap, i, i);  // Insert increasing priority
+    uint32_t entries = 10;
+
+    int *d = malloc(sizeof(int) * entries);
+
+    for (int i = 0; i < entries; i++) {
+        d[i] = i;
     }
 
     for (uint32_t i = 0; i < 10; i++) {
-        struct zn_minheap_entry result = zn_minheap_extract_min(heap);
-        if (!result.hasdata || result.data != i || result.priority != i) {
+        zn_minheap_insert(heap, &d[i], i);  // Insert increasing priority
+    }
+
+    for (uint32_t i = 0; i < 10; i++) {
+        struct zn_minheap_entry *result = zn_minheap_extract_min(heap);
+        if (!result || *((int *)result->data) != i || result->priority != i) {
             zn_minheap_destroy(heap);
             return 1;  // Failure
         }
@@ -93,15 +111,45 @@ int test_heap_expansion() {
  * @brief Stress test with multiple threads
  * @return 0 on success, non-zero on failure.
  */
-int test_concurrency_stress() {
+int test_update() {
     struct zn_minheap *heap = zn_minheap_init(10);
 
-    for (uint32_t i = 0; i < 10; i++) {
-        struct zn_minheap_entry result = zn_minheap_extract_min(heap);
-        if (!result.hasdata || result.data != i || result.priority != i) {
-            zn_minheap_destroy(heap);
-            return 1;  // Failure
-        }
+    uint32_t entries = 5;
+
+    struct zn_minheap_entry **results = malloc(sizeof(struct zn_minheap_entry *) * entries);
+    int *d = malloc(sizeof(int) * entries);
+
+    for (uint32_t i = 0; i < entries; i++) {
+        d[i] = i;
+        results[i] = zn_minheap_insert(heap, &d[i], i+1);
+    }
+
+    zn_minheap_update_by_entry(heap, results[2], 0);
+
+    struct zn_minheap_entry *e = zn_minheap_extract_min(heap);
+
+    if (e != results[2]) {
+        return 1;
+    }
+    if (*((int *)e->data) != 2 || e->priority != 0) {
+        return 1;
+    }
+
+    e = zn_minheap_extract_min(heap);
+    if (*((int *)e->data) != 0 || e->priority != 1 || e != results[0]) {
+        return 1;
+    }
+    e = zn_minheap_extract_min(heap);
+    if (*((int *)e->data) != 1 || e->priority != 2 || e != results[1]) {
+        return 1;
+    }
+    e = zn_minheap_extract_min(heap);
+    if (*((int *)e->data) != 3 || e->priority != 4 || e != results[3]) {
+        return 1;
+    }
+    e = zn_minheap_extract_min(heap);
+    if (*((int *)e->data) != 4 || e->priority != 5 || e != results[4]) {
+        return 1;
     }
 
     zn_minheap_destroy(heap);
@@ -140,6 +188,13 @@ int main() {
         failures++;
     } else {
         printf("Test PASSED: test_heap_expansion()\n");
+    }
+
+    if (test_update() != 0) {
+        printf("Test FAILED: test_update()\n");
+        failures++;
+    } else {
+        printf("Test PASSED: test_update()\n");
     }
 
     return failures;
