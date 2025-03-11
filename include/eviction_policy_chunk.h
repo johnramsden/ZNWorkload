@@ -10,6 +10,7 @@ struct eviction_policy_chunk_zone {
     struct zn_pair *chunks; /**< Pool of chunks, backing for lru */
     uint32_t chunks_in_use;
     bool filled;
+    struct zn_minheap_entry * pqueue_entry; /**< Entry in invalid_pqueue */
 };
 
 struct zn_policy_chunk {
@@ -21,8 +22,10 @@ struct zn_policy_chunk {
     struct zn_minheap * invalid_pqueue; /**< Priority queue keeping track of invalid zones */
 
     struct eviction_policy_chunk_zone *zone_pool; /**< Pool of zones, backing for lru */
+    struct zn_cache *cache; /**< Shared pointer to cache (not owned by policy) */
 
     uint32_t zone_max_chunks;   /**< Number of chunks in a zone */
+    uint32_t total_chunks;   /**< Number of chunks on disk */
 };
 
 /** @brief Updates the chunk LRU policy
@@ -32,7 +35,7 @@ zn_policy_chunk_update(policy_data_t policy, struct zn_pair location,
                              enum zn_io_type io_type);
 
 /** @brief Gets a chunk to evict.
-    @returns the zone to evict, -1 if there are no full zones.
+    @returns the 0 on evict, 1 if no evict.
  */
 int
-zn_policy_chunk_get_chunk_to_evict(policy_data_t policy);
+zn_policy_chunk_evict(policy_data_t policy);

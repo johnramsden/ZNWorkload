@@ -2,9 +2,11 @@
 
 #include "glib.h"
 #include "zncache.h"
+#include <stdint.h>
 
 /**
- * @struct zn_cache_map
+ * @struct zn_cachemap
+ *
  * @brief A map for finding where data is stored on the disk based on the data ID.
  * Keeps track of two things:
  *  1. Data ID → (Zone ID, chunk pointer)
@@ -13,9 +15,8 @@
 struct zn_cachemap {
     GMutex cache_map_mutex;
     GHashTable *zone_map;
-    GHashTable **data_map;    /**< Zone ID → GHashTable (chunk -> Data ID) */
-    gint *active_readers; /**< Non-owning reference to the number of currently active readers per
-                             zone. */
+    GHashTable **data_map;  /**< Zone ID → GHashTable (chunk -> Data ID) */
+    gint *active_readers;   /**< Non-owning reference to the number of currently active readers per zone. */
 };
 
 void
@@ -81,7 +82,7 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
  *   - Additionally clears the Zone ID → Data ID map
  */
 void
-zn_cachemap_clear_chunk(struct zn_cachemap *map, uint32_t zone);
+zn_cachemap_clear_chunk(struct zn_cachemap *map, struct zn_pair location);
 
 /** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
  * @param zone the zone

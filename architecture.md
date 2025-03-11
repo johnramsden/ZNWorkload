@@ -24,7 +24,12 @@ On update:
 
 On evict:
 * Evict based on LRU
-* Update `chunks_in_use`, `chunks`
+* Determine if evict based on high chunk thresh
+* if `total_chunks-len(lru_queue)` < high chunk thresh, evict
+* Invalidation:
+  * Update `chunks_in_use`, `chunks`
+  * Update Invalid queue in ZSM
+* Update ZSM (`zn_cachemap_clear_chunk`)
 
 On GC:
 * Pop from `invalid_pqueue`, migrate via:
@@ -32,7 +37,9 @@ On GC:
   * If SSD update zsm invalid
 
 Issues:
-* GC on SSD - skip
+* GC on SSD - skip, instead use `zn_zone` invalid queue
+  * set `filled=true`
+  * Put zn_zone back in active, find `chunk_offset` in `invalid` queue
 
 #### Eviction
 

@@ -155,7 +155,14 @@ zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int f
     assert(state->free);
     assert(state->state);
     for (uint32_t i = 0; i < num_zones; i++) {
-        state->state[i] = (struct zn_zone) {.state = ZN_ZONE_FREE, .zone_id = i, .chunk_offset = 0};
+        GQueue *queue = g_queue_new();
+        assert(queue);
+        state->state[i] = (struct zn_zone) {
+            .state = ZN_ZONE_FREE,
+            .zone_id = i,
+            .chunk_offset = 0,
+            .invalid = queue
+        };
         g_queue_push_tail(state->free, &state->state[i]);
     }
 }
@@ -329,4 +336,29 @@ zsm_get_num_full_zones(struct zone_state_manager *state) {
     g_mutex_unlock(&state->state_mutex);
 
     return count;
+}
+
+uint32_t
+zsm_get_num_invalid_chunks(struct zone_state_manager *state, uint32_t zone) {
+    g_mutex_lock(&state->state_mutex);
+    uint32_t len = g_queue_get_length(state[zone].state->invalid);
+    g_mutex_unlock(&state->state_mutex);
+    return len;
+}
+
+void
+zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair location) {
+    g_mutex_lock(&state->state_mutex);
+    dbg_print_g_queue(
+        "state[location.zone].state->invalid before mark",
+        state[location.zone].state->invalid,
+        PRINT_G_QUEUE_GINT
+    );
+    g_queue_push_tail(state[location.zone].state->invalid, GUINT_TO_POINTER(location.chunk_offset));
+    dbg_print_g_queue(
+        "state[location.zone].state->invalid after mark",
+        state[location.zone].state->invalid,
+        PRINT_G_QUEUE_GINT
+    );
+    g_mutex_unlock(&state->state_mutex);
 }

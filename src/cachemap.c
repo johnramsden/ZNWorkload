@@ -163,8 +163,6 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
     GHashTableIter iter;
     gpointer key, value;
 
-    zn_cachemap_clear_chunk(map, (struct zn_pair) {.zone = zone, .chunk_offset = 0});
-
     g_hash_table_iter_init(&iter, map->data_map[zone]);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         int data_id = GPOINTER_TO_INT(value);

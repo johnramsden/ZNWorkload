@@ -3,6 +3,7 @@
 #include "glib.h"
 #include "stdbool.h"
 #include "zncache.h"
+#include "cachemap.h"
 
 #include <stdint.h>
 
@@ -47,9 +48,8 @@ struct zn_zone {
  */
 struct zone_state_manager {
     GMutex state_mutex; /**< The lock protecting this data structure */
-    GQueue
-        *active;  /**< The queue of zones that are currently active. Stores pointers to zn_zones. */
-    GQueue *free; /**< The queue of zones that are free. Stores pointers to zn_zones. */
+    GQueue *active;     /**< The queue of zones that are currently active. Stores pointers to zn_zones. */
+    GQueue *free;       /**< The queue of zones that are free. Stores pointers to zn_zones. */
     struct zn_zone *state; /**< An array that stores the state of each zone, and acts as the backing
     memory for the active and free queues. */
     int writes_occurring;  /**< The current number of writes occuring on active zones */
@@ -131,3 +131,11 @@ zsm_get_num_free_zones(struct zone_state_manager *state);
 /** @brief Returns the full zone count */
 uint32_t
 zsm_get_num_full_zones(struct zone_state_manager *state);
+
+/** @brief Mark a chunk as invalid */
+void
+zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair location);
+
+/** @brief Returns invalid chunks in a zone */
+uint32_t
+zsm_get_num_invalid_chunks(struct zone_state_manager *state, uint32_t zone);

@@ -38,6 +38,11 @@ print_g_hash_table_zn_pair_node(gpointer key, gpointer value) {
     }
 }
 
+inline static void
+print_g_hash_table_g_int(gpointer key, gpointer value) {
+    printf("[%d: %d], ", GPOINTER_TO_INT(key), GPOINTER_TO_INT(value));
+}
+
 void
 print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_type type) {
     GHashTableIter iter;
@@ -49,7 +54,7 @@ print_g_hash_table(char *name, GHashTable *hash_table, enum print_g_hash_table_t
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         switch (type) {
             case PRINT_G_HASH_TABLE_GINT:
-                print_g_hash_table_zn_pair(key, value); break;
+                print_g_hash_table_g_int(key, value); break;
             case PRINT_G_HASH_TABLE_ZN_PAIR:
                 print_g_hash_table_zn_pair(key, value); break;
             case PRINT_G_HASH_TABLE_ZN_PAIR_NODE:

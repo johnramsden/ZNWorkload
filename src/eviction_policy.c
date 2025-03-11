@@ -52,6 +52,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
     switch (type) {
         case ZN_EVICT_PROMOTE_ZONE: {
             struct zn_policy_promotional *data = malloc(sizeof(struct zn_policy_promotional));
+            assert(data);
             g_mutex_init(&data->policy_mutex);
             data->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
             assert(data->zone_to_lru_map);
@@ -65,7 +66,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
                 .type = ZN_EVICT_PROMOTE_ZONE,
                 .data = data,
                 .update_policy = zn_policy_promotional_update,
-                .get_zone_to_evict = zn_policy_promotional_get_zone_to_evict,
+                .do_evict = zn_policy_promotional_get_zone_to_evict
             };
             break;
         }
@@ -74,6 +75,10 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
         case ZN_EVICT_CHUNK: {
             struct zn_policy_chunk *data = malloc(sizeof(struct zn_policy_chunk));
             assert(data);
+
+            // TODO: map
+
+            data->total_chunks = nr_zones * zone_max_chunks;
 
             // zn_pair to lru_map
             data->chunk_to_lru_map = g_hash_table_new(
@@ -113,7 +118,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
                 .type = ZN_EVICT_CHUNK,
                 .data = data,
                 .update_policy = zn_policy_chunk_update,
-                .get_zone_to_evict = zn_policy_chunk_get_chunk_to_evict,
+                .do_evict = zn_policy_chunk_evict
             };
             break;
         }

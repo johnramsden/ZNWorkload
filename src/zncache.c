@@ -22,8 +22,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#define EVICT_HIGH_THRESH 2
-#define EVICT_LOW_THRESH 4
 #define EVICTION_POLICY ZN_EVICT_CHUNK
 
 #define MICROSECS_PER_SECOND 1000000
@@ -314,25 +312,31 @@ static void
 fg_evict(struct ze_cache *cache) {
     dbg_printf("EVICTING\n");
     uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
-    for (uint32_t i = 0; i < EVICT_LOW_THRESH - free_zones; i++) {
-        int zone =
-            cache->eviction_policy.get_zone_to_evict(cache->eviction_policy.data);
-        if (zone == -1) {
-            dbg_printf("No zones to evict\n");
-            break;
-        }
+    if (cache->eviction_policy.type == ZN_EVICT_PROMOTE_ZONE) {
+        for (uint32_t i = 0; i < EVICT_LOW_THRESH_ZONES - free_zones; i++) {
+            int zone =
+                cache->eviction_policy.do_evict(cache->eviction_policy.data);
+            if (zone == -1) {
+                dbg_printf("No zones to evict\n");
+                break;
+            }
 
-        zn_cachemap_clear_zone(&cache->cache_map, zone);
-        while (cache->active_readers[zone] > 0) {
-            g_thread_yield();
-        }
+            zn_cachemap_clear_zone(&cache->cache_map, zone);
+            while (cache->active_readers[zone] > 0) {
+                g_thread_yield();
+            }
 
-        // We can assume that no threads will create entries to the zone in the cache map,
-        // because it is full.
-        int ret = zsm_evict(&cache->zone_state, zone);
-        if (ret != 0) {
-            assert(!"Issue occurred with evicting zones\n");
+            // We can assume that no threads will create entries to the zone in the cache map,
+            // because it is full.
+            int ret = zsm_evict(&cache->zone_state, zone);
+            if (ret != 0) {
+                assert(!"Issue occurred with evicting zones\n");
+            }
         }
+    } else if (cache->eviction_policy.type == ZN_EVICT_CHUNK) {
+        (void)cache->eviction_policy.do_evict(cache->eviction_policy.data);
+    } else {
+        assert(!"NYI");
     }
 }
 
@@ -355,7 +359,6 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
     // Found the entry, read it from disk, update eviction, and decrement reader.
     if (result.type == RESULT_LOC) {
-        assert(result.value.location.zone >= 0 && result.value.location.zone < cache->nr_zones);
         unsigned char *data = ze_read_from_disk(cache, &result.value.location);
         cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
                                              ZN_READ);
@@ -399,8 +402,6 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
         zn_cachemap_insert(&cache->cache_map, id, location);
 
         zsm_return_active_zone(&cache->zone_state, &location);
-
-        assert(location.zone >= 0 && location.zone < cache->nr_zones);
 
         cache->eviction_policy.update_policy(cache->eviction_policy.data, location, ZN_WRITE);
 
@@ -460,15 +461,12 @@ evict_task(gpointer user_data) {
         }
 
         uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
-        if (free_zones > EVICT_HIGH_THRESH) {
-            // Not at mark, wait
-            // dbg_printf("EVICTION: Free zones=%u > %u, not evicting\n", free_zones,
-            //            EVICT_HIGH_THRESH);
+        if (free_zones > EVICT_HIGH_THRESH_ZONES) {
             g_usleep(EVICT_SLEEP_US);
             continue;
         }
 
-        assert(EVICT_LOW_THRESH - free_zones > 0);
+        assert(EVICT_LOW_THRESH_ZONES - free_zones > 0);
 
         fg_evict(cache);
     }

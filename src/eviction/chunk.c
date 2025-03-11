@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <zone_state_manager.h>
 
 void
 zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
@@ -43,7 +44,9 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
         if (location.chunk_offset == policy->zone_max_chunks-1) {
             // We only add zones to the minheap when they are full.
             dbg_printf("Adding %p (zone=%u) to pqueue\n", (void *)zp, location.zone);
-            zn_minheap_insert(policy->invalid_pqueue, zp, zpc->chunks_in_use);
+            zpc->pqueue_entry = zn_minheap_insert(policy->invalid_pqueue, zp, zpc->chunks_in_use);
+            assert(zpc->pqueue_entry);
+            zpc->filled = true;
         }
     } else if (io_type == ZN_READ) {
         if (node->data) {
@@ -52,7 +55,7 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
             g_queue_push_tail(&policy->lru_queue, data);
         }
 
-        // TODO: I THINK: If node->data == NULL, the zone is not in the LRU queue. This
+        // If node->data == NULL, the zone is not in the LRU queue. This
         // means that the zone is either not full, or has been removed
         // by the eviction thread while the read occurred. Don't do
         // anything
@@ -67,8 +70,60 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
     g_mutex_unlock(&policy->policy_mutex);
 }
 
-int
-zn_policy_chunk_get_chunk_to_evict(policy_data_t policy) {
+[[maybe_unused]] static void
+zn_policy_chunk_gc(policy_data_t policy) {
     (void)policy;
+
+}
+
+int
+zn_policy_chunk_evict(policy_data_t policy) {
+    struct zn_policy_chunk *chunk_policy = policy;
+
+    g_mutex_lock(&chunk_policy->policy_mutex);
+
+    dbg_printf("State before chunk evict\n");
+    dbg_print_g_queue("lru_queue (zone,chunk,id,in_use)", &chunk_policy->lru_queue, PRINT_G_QUEUE_ZN_PAIR);
+    dbg_print_g_hash_table("chunk_to_lru_map (id,zone,chunk,in_use)", chunk_policy->chunk_to_lru_map, PRINT_G_HASH_TABLE_ZN_PAIR_NODE);
+
+    uint32_t in_lru = g_queue_get_length(&chunk_policy->lru_queue);
+    uint32_t free_chunks = chunk_policy->total_chunks - in_lru;
+
+    dbg_printf("Free chunks=%u, Chunks in lru=%u, EVICT_HIGH_THRESH_CHUNKS=%u\n",
+               free_chunks, in_lru, EVICT_HIGH_THRESH_CHUNKS);
+
+    if ((in_lru == 0) || (free_chunks > EVICT_HIGH_THRESH_CHUNKS)) {
+        dbg_printf("Nothing to evict\n");
+        g_mutex_unlock(&chunk_policy->policy_mutex);
+        return 1;
+    }
+
+    uint32_t nr_evict = EVICT_LOW_THRESH_CHUNKS-free_chunks;
+
+    dbg_printf("Evicting %u chunks\n", nr_evict);
+
+    // We meet thresh for eviction - evict
+    for (uint32_t i = 0; i < nr_evict; i++) {
+        struct zn_pair * zp = g_queue_pop_head(&chunk_policy->lru_queue);
+        // Invalidate chunk
+        chunk_policy->zone_pool[zp->zone].chunks->in_use = false;
+        chunk_policy->zone_pool[zp->zone].chunks_in_use--;
+
+        // zsm_mark_chunk_invalid(chunk_policy->map)
+
+        // Update ZSM
+    }
+
+
+
+
+    dbg_printf("State after chunk evict\n");
+    dbg_print_g_queue("lru_queue (zone,chunk,id,in_use)", &chunk_policy->lru_queue, PRINT_G_QUEUE_ZN_PAIR);
+    dbg_print_g_hash_table("chunk_to_lru_map (id,zone,chunk,in_use)", chunk_policy->chunk_to_lru_map, PRINT_G_HASH_TABLE_ZN_PAIR_NODE);
+
+    zn_policy_chunk_gc(chunk_policy);
+
+    g_mutex_unlock(&chunk_policy->policy_mutex);
+
     return 0;
 }

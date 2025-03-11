@@ -3,9 +3,10 @@
 
 #include <stdbool.h> // Needed on old C (actions, cortes)
 #include <stdint.h>
+#include <glib.h>
 
 /**
- * @struct zn_pair
+ * @struct ze_pair
  * @brief Represents a mapping of data to a specific zone and chunk offset.
  *
  * This structure is used to store references to locations within the cache,
@@ -17,7 +18,6 @@ struct zn_pair {
     uint32_t id;           /**< Unique ID */
     bool in_use;           /**< Defines if ze_pair is in use. */
 };
-
 
 /**
  * @enum ze_backend
