@@ -134,7 +134,7 @@ void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
          const uint64_t zone_cap, const size_t chunk_size,
          const uint32_t max_nr_active_zones,
-         const enum ze_backend backend_type) {
+         const enum zn_backend backend_type) {
     assert(state);
     state->fd = fd;
     state->zone_cap = zone_cap;

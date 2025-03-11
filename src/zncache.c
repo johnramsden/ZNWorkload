@@ -46,28 +46,28 @@ uint32_t simple_workload[NR_WORKLOADS][NR_QUERY] = {
 unsigned char *RANDOM_DATA = NULL;
 
 /**
- * @struct ze_reader
+ * @struct zn_reader
  * @brief Manages concurrent read operations within the cache.
  *
  * The reader structure tracks query execution and workload distribution,
  * ensuring thread-safe access to cached data.
  */
-struct ze_reader {
+struct zn_reader {
     GMutex lock;             /**< Mutex to synchronize access to the reader state. */
     uint32_t query_index;    /**< Index of the next query to be processed. */
     uint32_t workload_index; /**< Index of the workload associated with the reader. */
 };
 
 /**
- * @struct ze_cache
+ * @struct zn_cache
  * @brief Represents a cache system that manages data storage in predefined zones.
  *
  * This structure is responsible for managing zones, including tracking active,
  * free, and recently used zones. It supports parallel insertion, LRU eviction,
  * and mapping of data IDs to specific zones and offsets.
  */
-struct ze_cache {
-    enum ze_backend backend;      /**< SSD backend. */
+struct zn_cache {
+    enum zn_backend backend;      /**< SSD backend. */
     int fd;                       /**< File descriptor for associated disk. */
     uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
     uint32_t nr_zones;            /**< Total number of zones availible. */
@@ -78,19 +78,19 @@ struct ze_cache {
     struct zn_cachemap cache_map;
     struct zn_evict_policy eviction_policy;
     struct zone_state_manager zone_state;
-    struct ze_reader reader; /**< Reader structure for tracking workload location. */
+    struct zn_reader reader; /**< Reader structure for tracking workload location. */
     gint *active_readers;    /**< Owning reference of the list of active readers per zone */
 };
 
 /**
- * @struct ze_thread_data
+ * @struct zn_thread_data
  * @brief Holds thread-specific data for interacting with the cache.
  *
  * This structure associates a thread with a specific cache instance
  * and provides a unique thread identifier.
  */
-struct ze_thread_data {
-    struct ze_cache *cache; /**< Pointer to the cache instance associated with this thread. */
+struct zn_thread_data {
+    struct zn_cache *cache; /**< Pointer to the cache instance associated with this thread. */
     uint32_t tid;           /**< Unique identifier for the thread. */
     bool done;              /**< Marks completed */
 };
@@ -124,7 +124,7 @@ zone_cap(int fd, uint64_t *zone_capacity) {
 }
 
 [[maybe_unused]] static void
-ze_print_cache(struct ze_cache *cache) {
+zn_print_cache(struct zn_cache *cache) {
     (void) cache;
 #ifdef DEBUG
     printf("\tchunk_sz=%lu\n", cache->chunk_sz);
@@ -135,13 +135,13 @@ ze_print_cache(struct ze_cache *cache) {
 }
 
 /**
- * @brief Initializes a `ze_cache` structure with the given parameters.
+ * @brief Initializes a `zn_cache` structure with the given parameters.
  *
  * This function sets up the cache by initializing its fields, creating the required
  * data structures (hash table, queues, state array), and setting up synchronization
  * mechanisms. It also verifies the integrity of the initialized cache.
  *
- * @param cache Pointer to the `ze_cache` structure to initialize.
+ * @param cache Pointer to the `zn_cache` structure to initialize.
  * @param info Pointer to `zbd_info` providing zone details.
  * @param chunk_sz The size of each chunk in bytes.
  * @param zone_cap The maximum capacity per zone in bytes.
@@ -149,8 +149,8 @@ ze_print_cache(struct ze_cache *cache) {
  * @param eviction_policy Eviction policy used
  */
 static void
-ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum ze_backend backend) {
+zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
+              int fd, enum zn_evict_policy_type policy, enum zn_backend backend) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -185,20 +185,20 @@ ze_init_cache(struct ze_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 }
 
 /**
- * @brief Destroys and cleans up a `ze_cache` structure.
+ * @brief Destroys and cleans up a `zn_cache` structure.
  *
  * This function frees all dynamically allocated resources associated with the cache,
  * including hash tables, queues, and state arrays. It also closes the file descriptor
  * and clears associated mutexes to ensure proper cleanup.
  *
- * @param cache Pointer to the `ze_cache` structure to be destroyed.
+ * @param cache Pointer to the `zn_cache` structure to be destroyed.
  *
- * @note After calling this function, the `ze_cache` structure should not be used
+ * @note After calling this function, the `zn_cache` structure should not be used
  *       unless it is reinitialized.
  * @note The function assumes that `zam` is properly initialized before being passed.
  */
 static void
-ze_destroy_cache(struct ze_cache *cache) {
+zn_destroy_cache(struct zn_cache *cache) {
     (void) cache;
 
     // TODO assert(!"Todo: clean up cache");
@@ -223,12 +223,12 @@ ze_destroy_cache(struct ze_cache *cache) {
 /**
  * @brief Read a chunk from disk
  *
- * @param cache Pointer to the `ze_cache` structure
+ * @param cache Pointer to the `zn_cache` structure
  * @param zone_pair Chunk, zone pair
  * @return Buffer read from disk, to be freed by caller
  */
 static unsigned char *
-ze_read_from_disk(struct ze_cache *cache, struct zn_pair *zone_pair) {
+zn_read_from_disk(struct zn_cache *cache, struct zn_pair *zone_pair) {
     unsigned char *data = malloc(cache->chunk_sz);
     if (data == NULL) {
         nomem();
@@ -262,7 +262,7 @@ ze_read_from_disk(struct ze_cache *cache, struct zn_pair *zone_pair) {
  * @note Be careful write size is not too large otherwise you can get errors
  */
 static int
-ze_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write_size,
+zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write_size,
              unsigned long long wp_start) {
     ssize_t bytes_written;
     size_t total_written = 0;
@@ -288,12 +288,12 @@ ze_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write
  * Allocate a buffer prefixed by `zone_id`, with the rest being `RANDOM_DATA`
  * Simulates remote read with ZE_READ_SLEEP_US
  *
- * @param cache Pointer to the `ze_cache` structure.
+ * @param cache Pointer to the `zn_cache` structure.
  * @param zone_id ID to write to first 4 bytes
  * @return Allocated buffer or NULL, caller is responsible for free
  */
 static unsigned char *
-ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
+zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id) {
     unsigned char *data = malloc(cache->chunk_sz);
     if (data == NULL) {
         nomem();
@@ -309,7 +309,7 @@ ze_gen_write_buffer(struct ze_cache *cache, uint32_t zone_id) {
 }
 
 static void
-fg_evict(struct ze_cache *cache) {
+fg_evict(struct zn_cache *cache) {
     dbg_printf("EVICTING\n");
     uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
     if (cache->eviction_policy.type == ZN_EVICT_PROMOTE_ZONE) {
@@ -345,12 +345,12 @@ fg_evict(struct ze_cache *cache) {
  *
  * Gets data from cache if present, otherwise pulls from emulated remote
  *
- * @param cache Pointer to the `ze_cache` structure.
+ * @param cache Pointer to the `zn_cache` structure.
  * @param id Cache item ID to get
  * @returns Buffer of data recieved or NULL on error (callee is responsible for freeing)
  */
 static unsigned char *
-ze_cache_get(struct ze_cache *cache, const uint32_t id) {
+zn_cache_get(struct zn_cache *cache, const uint32_t id) {
     unsigned char *data = NULL;
 
     struct zone_map_result result = zn_cachemap_find(&cache->cache_map, id);
@@ -359,7 +359,7 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
     // Found the entry, read it from disk, update eviction, and decrement reader.
     if (result.type == RESULT_LOC) {
-        unsigned char *data = ze_read_from_disk(cache, &result.value.location);
+        unsigned char *data = zn_read_from_disk(cache, &result.value.location);
         cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
                                              ZN_READ);
 
@@ -388,12 +388,12 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 
         // Emulates pulling in data from a remote source by filling in a cache entry with random
         // bytes
-        data = ze_gen_write_buffer(cache, id);
+        data = zn_gen_write_buffer(cache, id);
 
         // Write buffer to disk, 4kb blocks at a time
         unsigned long long wp =
             CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, location.chunk_offset, location.zone);
-        if (ze_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
+        if (zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
             dbg_printf("Couldn't write to fd at wp=%llu\n", wp);
             goto UNDO_ZONE_GET;
         }
@@ -419,13 +419,13 @@ ze_cache_get(struct ze_cache *cache, const uint32_t id) {
 /**
  * Validate contents of cache read
  *
- * @param cache Pointer to the `ze_cache` structure.
+ * @param cache Pointer to the `zn_cache` structure.
  * @param data Data to validate against RANDOM_DATA
  * @param id Identifier that should be in first 4 bytes
  * @return Non-zero on error
  */
 static int
-ze_validate_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
+zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id) {
     uint32_t read_id;
     memcpy(&read_id, data, sizeof(uint32_t));
     if (read_id != id) {
@@ -450,8 +450,8 @@ ze_validate_read(struct ze_cache *cache, unsigned char *data, uint32_t id) {
  */
 gpointer
 evict_task(gpointer user_data) {
-    struct ze_thread_data *thread_data = user_data;
-    struct ze_cache *cache = thread_data->cache;
+    struct zn_thread_data *thread_data = user_data;
+    struct zn_cache *cache = thread_data->cache;
 
     printf("Evict task started by thread %p\n", (void *) g_thread_self());
 
@@ -481,10 +481,10 @@ evict_task(gpointer user_data) {
 void
 task_function(gpointer data, gpointer user_data) {
     (void) user_data;
-    struct ze_thread_data *thread_data = data;
+    struct zn_thread_data *thread_data = data;
 
     printf("Task %d started by thread %p\n", thread_data->tid, (void *) g_thread_self());
-    // ze_print_cache(thread_data->cache);
+    // zn_print_cache(thread_data->cache);
 
     // Handles any cache read requests
     while (true) {
@@ -513,16 +513,16 @@ task_function(gpointer data, gpointer user_data) {
         assert(wi < NR_WORKLOADS);
 
         // Find the data in the cache
-        unsigned char *data = ze_cache_get(thread_data->cache, simple_workload[wi][qi]);
+        unsigned char *data = zn_cache_get(thread_data->cache, simple_workload[wi][qi]);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data\n");
             return;
         }
 #ifdef VERIFY
-        assert(ze_validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
+        assert(zn_validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
 #endif
         free(data);
-        printf("[%d]: ze_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
+        printf("[%d]: zn_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
                simple_workload[wi][qi]);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
@@ -543,7 +543,7 @@ main(int argc, char **argv) {
     }
 
     char *device = argv[1];
-    enum ze_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
+    enum zn_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
@@ -613,8 +613,8 @@ main(int argc, char **argv) {
         nomem();
     }
 
-    struct ze_cache cache = {0};
-    ze_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type);
+    struct zn_cache cache = {0};
+    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
@@ -628,7 +628,7 @@ main(int argc, char **argv) {
     TIME_NOW(&start_time);
 
     // Push tasks to the thread pool
-    struct ze_thread_data *thread_data = g_new(struct ze_thread_data, nr_threads);
+    struct zn_thread_data *thread_data = g_new(struct zn_thread_data, nr_threads);
     for (int i = 0; i < nr_threads; i++) {
         thread_data[i].tid = i;
         thread_data[i].cache = &cache;
@@ -640,7 +640,7 @@ main(int argc, char **argv) {
     }
 
     // Setup eviction thread
-    struct ze_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
+    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
 
     GThread *thread = g_thread_new("evict-thread", evict_task, &eviction_thread_data);
 
@@ -658,7 +658,7 @@ main(int argc, char **argv) {
                TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
-    ze_destroy_cache(&cache);
+    zn_destroy_cache(&cache);
     g_free(thread_data);
     free(RANDOM_DATA);
     return 0;

@@ -6,7 +6,7 @@
 #include <glib.h>
 
 /**
- * @struct ze_pair
+ * @struct zn_pair
  * @brief Represents a mapping of data to a specific zone and chunk offset.
  *
  * This structure is used to store references to locations within the cache,
@@ -23,7 +23,7 @@ struct zn_pair {
  * @enum ze_backend
  * @brief Defines SSD backends
  */
-enum ze_backend {
+enum zn_backend {
     ZE_BACKEND_ZNS = 0,   /**< ZNS SSD backend. */
     ZE_BACKEND_BLOCK = 1, /**< Block-interface backend. */
 };

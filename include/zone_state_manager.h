@@ -61,7 +61,7 @@ struct zone_state_manager {
     uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
     uint64_t max_zone_chunks;     /**< Maximum amount of chunks that a zone can store */
     uint32_t num_zones;           /**< Number of zones */
-	enum ze_backend backend_type; /**< The type of backend */
+	enum zn_backend backend_type; /**< The type of backend */
 };
 
 /**
@@ -78,7 +78,7 @@ struct zone_state_manager {
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
          const uint64_t zone_cap, const size_t chunk_size, const uint32_t max_nr_active_zones,
-         const enum ze_backend backend_type);
+         const enum zn_backend backend_type);
 
 /** @brief Returns a new chunk that a thread can write to
  *  @param[in]  state zone_state data structure
