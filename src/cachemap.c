@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <znutil.h>
 
 void
 zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint *active_readers_arr) {
@@ -14,12 +15,13 @@ zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint *active_read
     map->zone_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     assert(map->zone_map);
 
-    map->data_map = malloc(sizeof(GArray) * num_zones);
+    map->data_map = g_new(GHashTable *, num_zones);
     assert(map->data_map);
 
     // Zone → Data ID
     for (int i = 0; i < num_zones; i++) {
-        map->data_map[i] = g_array_new(FALSE, FALSE, sizeof(int));
+        map->data_map[i] = g_hash_table_new(g_direct_hash, g_direct_equal); // Chunk -> data ID
+        assert(map->data_map[i]);
     }
 
     map->active_readers = active_readers_arr;
@@ -102,6 +104,8 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
 
     g_mutex_lock(&map->cache_map_mutex);
 
+    dbg_print_g_hash_table("map->data_map[location.zone]", map->data_map[location.zone], PRINT_G_HASH_TABLE_GINT);
+
     // It must contain an entry if the thread called zn_cachemap_find beforehand
     assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
 
@@ -111,10 +115,41 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
     GCond *condition = result->value.write_finished;
     result->value.location = location; // Does this mutate the entry in the hash table?
     result->type = RESULT_LOC;
-    g_array_append_val(map->data_map[location.zone], data_id);
+    assert(map->data_map[location.zone]);
+    g_hash_table_insert(map->data_map[location.zone], GUINT_TO_POINTER(location.chunk_offset), GINT_TO_POINTER(data_id));
     g_cond_broadcast(condition);            // Wake up threads waiting for it
     g_atomic_rc_box_release_full(condition, // Decrement the writing thread's ref
                                  (GDestroyNotify) free_cond_var);
+
+    dbg_print_g_hash_table("map->data_map[location.zone]", map->data_map[location.zone], PRINT_G_HASH_TABLE_GINT);
+
+    g_mutex_unlock(&map->cache_map_mutex);
+}
+
+void
+zn_cachemap_clear_chunk(struct zn_cachemap *map, struct zn_pair location) {
+    assert(map);
+
+    g_mutex_lock(&map->cache_map_mutex);
+
+    dbg_print_g_hash_table("map->data_map[location.zone]", map->data_map[location.zone], PRINT_G_HASH_TABLE_GINT);
+
+    gpointer data_id_ptr = g_hash_table_lookup(map->data_map[location.zone], GUINT_TO_POINTER(location.chunk_offset));
+    assert(data_id_ptr);
+    int data_id = GPOINTER_TO_INT(data_id_ptr);
+    assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
+    struct zone_map_result *res = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
+    assert(res->type == RESULT_LOC);
+    assert(res->value.location.zone == location.zone);
+    assert(res->value.location.chunk_offset == location.chunk_offset);
+
+    // Erase the entry and free the zone_map_result memory
+    g_hash_table_remove(map->zone_map, GINT_TO_POINTER(data_id));
+    g_free(res);
+
+    g_hash_table_remove(map->data_map[location.zone], GINT_TO_POINTER(data_id));
+
+    dbg_print_g_hash_table("map->data_map[location.zone]", map->data_map[location.zone], PRINT_G_HASH_TABLE_GINT);
 
     g_mutex_unlock(&map->cache_map_mutex);
 }
@@ -125,8 +160,14 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
 
     g_mutex_lock(&map->cache_map_mutex);
 
-    for (guint i = 0; i < map->data_map[zone]->len; i++) {
-        int data_id = g_array_index(map->data_map[zone], int, i);
+    GHashTableIter iter;
+    gpointer key, value;
+
+    zn_cachemap_clear_chunk(map, (struct zn_pair) {.zone = zone, .chunk_offset = 0});
+
+    g_hash_table_iter_init(&iter, map->data_map[zone]);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        int data_id = GPOINTER_TO_INT(value);
         assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
         struct zone_map_result *res = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
         assert(res->type == RESULT_LOC);
@@ -137,7 +178,7 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
         g_free(res);
     }
 
-    g_array_remove_range(map->data_map[zone], 0, map->data_map[zone]->len);
+    g_hash_table_remove_all(map->data_map[zone]);
 
     g_mutex_unlock(&map->cache_map_mutex);
 }

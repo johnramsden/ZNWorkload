@@ -13,7 +13,7 @@
 struct zn_cachemap {
     GMutex cache_map_mutex;
     GHashTable *zone_map;
-    GArray **data_map;    /**< Zone ID → listof (Data ID) */
+    GHashTable **data_map;    /**< Zone ID → GHashTable (chunk -> Data ID) */
     gint *active_readers; /**< Non-owning reference to the number of currently active readers per
                              zone. */
 };
@@ -72,6 +72,16 @@ zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id);
  */
 void
 zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location);
+
+/** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
+ * @param zone the zone
+   to clear
+ * @return void
+ * Implementation notes:
+ *   - Additionally clears the Zone ID → Data ID map
+ */
+void
+zn_cachemap_clear_chunk(struct zn_cachemap *map, uint32_t zone);
 
 /** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
  * @param zone the zone
