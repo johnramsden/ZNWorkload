@@ -47,7 +47,8 @@ zn_pair_equal(gconstpointer a, gconstpointer b) {
 
 void
 zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type,
-                     uint32_t zone_max_chunks, uint32_t nr_zones) {
+                     uint32_t zone_max_chunks, uint32_t nr_zones, struct zn_cachemap *cachemap,
+                     struct zone_state_manager *zsm) {
 
     switch (type) {
         case ZN_EVICT_PROMOTE_ZONE: {
@@ -76,7 +77,8 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             struct zn_policy_chunk *data = malloc(sizeof(struct zn_policy_chunk));
             assert(data);
 
-            // TODO: map
+            data->zsm = zsm;
+            data->cachemap = cachemap;
 
             data->total_chunks = nr_zones * zone_max_chunks;
 

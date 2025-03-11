@@ -173,7 +173,8 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 
     // Set up the data structures
     zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
-    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks, cache->nr_zones);
+    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks, cache->nr_zones,
+        &cache->cache_map, &cache->zone_state);
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 

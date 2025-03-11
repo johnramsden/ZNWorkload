@@ -4,6 +4,9 @@
 #include "eviction_policy.h"
 #include "glib.h"
 
+#include "cachemap.h"
+#include "zone_state_manager.h"
+
 #include <stdint.h>
 
 struct eviction_policy_chunk_zone {
@@ -22,7 +25,8 @@ struct zn_policy_chunk {
     struct zn_minheap * invalid_pqueue; /**< Priority queue keeping track of invalid zones */
 
     struct eviction_policy_chunk_zone *zone_pool; /**< Pool of zones, backing for lru */
-    struct zn_cache *cache; /**< Shared pointer to cache (not owned by policy) */
+    struct zn_cachemap *cachemap; /**< Shared pointer to cachemap (not owned by policy) */
+    struct zone_state_manager *zsm; /**< Shared pointer to zsm (not owned by policy) */
 
     uint32_t zone_max_chunks;   /**< Number of chunks in a zone */
     uint32_t total_chunks;   /**< Number of chunks on disk */
