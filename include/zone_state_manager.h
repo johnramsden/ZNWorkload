@@ -2,8 +2,8 @@
 
 #include "glib.h"
 #include "stdbool.h"
-#include "zncache.h"
 #include "cachemap.h"
+#include "znbackend.h"
 
 #include <stdint.h>
 

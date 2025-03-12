@@ -1,4 +1,5 @@
 #include "cachemap.h"
+#include "zncache.h"
 
 #include "assert.h"
 #include "glib.h"

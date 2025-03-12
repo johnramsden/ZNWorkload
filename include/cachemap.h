@@ -1,7 +1,7 @@
 #pragma once
 
+#include "znbackend.h"
 #include "glib.h"
-#include "zncache.h"
 #include <stdint.h>
 
 /**

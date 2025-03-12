@@ -1,8 +1,8 @@
 #pragma once
 
-#include "zncache.h"
 #include "cachemap.h"
 #include "zone_state_manager.h"
+#include "znbackend.h"
 
 #include <stdint.h>
 

@@ -2,6 +2,7 @@
 
 #include "eviction_policy_promotional.h"
 #include "eviction_policy_chunk.h"
+#include "zncache.h"
 
 #include <assert.h>
 #include <glib.h>

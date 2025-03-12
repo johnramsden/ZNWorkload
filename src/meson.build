@@ -1,6 +1,7 @@
 #Get the sources
 srcs = files(
     'zncache.c',
+    'cache.c',
     'znutil.c',
     'cachemap.c',
     'zone_state_manager.c',

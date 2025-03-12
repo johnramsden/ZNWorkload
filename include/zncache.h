@@ -5,29 +5,48 @@
 #include <stdint.h>
 #include <glib.h>
 
+#include "cachemap.h"
+#include "zone_state_manager.h"
+#include "eviction_policy.h"
+#include "znbackend.h"
+
 #define MAX_OPEN_ZONES 14
 
 /**
- * @struct zn_pair
- * @brief Represents a mapping of data to a specific zone and chunk offset.
+ * @struct zn_reader
+ * @brief Manages concurrent read operations within the cache.
  *
- * This structure is used to store references to locations within the cache,
- * allowing data to be efficiently retrieved or managed.
+ * The reader structure tracks query execution and workload distribution,
+ * ensuring thread-safe access to cached data.
  */
-struct zn_pair {
-    uint32_t zone;         /**< Identifier of the zone where the data is stored. */
-    uint32_t chunk_offset; /**< Offset within the zone where the data chunk is located. */
-    uint32_t id;           /**< Unique ID */
-    bool in_use;           /**< Defines if ze_pair is in use. */
+struct zn_reader {
+    GMutex lock;             /**< Mutex to synchronize access to the reader state. */
+    uint32_t query_index;    /**< Index of the next query to be processed. */
+    uint32_t workload_index; /**< Index of the workload associated with the reader. */
 };
 
 /**
- * @enum ze_backend
- * @brief Defines SSD backends
+ * @struct zn_cache
+ * @brief Represents a cache system that manages data storage in predefined zones.
+ *
+ * This structure is responsible for managing zones, including tracking active,
+ * free, and recently used zones. It supports parallel insertion, LRU eviction,
+ * and mapping of data IDs to specific zones and offsets.
  */
-enum zn_backend {
-    ZE_BACKEND_ZNS = 0,   /**< ZNS SSD backend. */
-    ZE_BACKEND_BLOCK = 1, /**< Block-interface backend. */
+struct zn_cache {
+    enum zn_backend backend;      /**< SSD backend. */
+    int fd;                       /**< File descriptor for associated disk. */
+    uint32_t max_nr_active_zones; /**< Maximum number of zones that can be active at once. */
+    uint32_t nr_zones;            /**< Total number of zones availible. */
+    uint64_t max_zone_chunks;     /**< Maximum number of chunks a zone can hold. */
+    size_t chunk_sz;              /**< Size of each chunk in bytes. */
+    uint64_t zone_cap;            /**< Maximum storage capacity per zone in bytes. */
+
+    struct zn_cachemap cache_map;
+    struct zn_evict_policy eviction_policy;
+    struct zone_state_manager zone_state;
+    struct zn_reader reader; /**< Reader structure for tracking workload location. */
+    gint *active_readers;    /**< Owning reference of the list of active readers per zone */
 };
 
 
