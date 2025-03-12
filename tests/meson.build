@@ -1,5 +1,5 @@
 project_tests = [
-    'minheap', 'minheap_concurrent'
+    'minheap', 'minheap_concurrent', 'chunk_eviction'
 ]
 
 foreach test_name : project_tests
