@@ -28,7 +28,6 @@
 #define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
 #define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND))
 
-#define MAX_OPEN_ZONES 14
 #define WRITE_GRANULARITY 4096
 
 // BLOCK_ZONE_CAPACITY Defined at compile-time

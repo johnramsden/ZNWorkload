@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <glib.h>
 
+#define MAX_OPEN_ZONES 14
+
 /**
  * @struct zn_pair
  * @brief Represents a mapping of data to a specific zone and chunk offset.
