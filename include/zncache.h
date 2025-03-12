@@ -4,12 +4,18 @@
 #include <stdbool.h> // Needed on old C (actions, cortes)
 #include <stdint.h>
 #include <glib.h>
+#include <libzbd/zbd.h>
 
 #include "cachemap.h"
 #include "zone_state_manager.h"
 #include "eviction_policy.h"
 #include "znbackend.h"
 
+#define MICROSECS_PER_SECOND 1000000
+#define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
+#define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND))
+
+#define WRITE_GRANULARITY 4096
 #define MAX_OPEN_ZONES 14
 
 /**
@@ -48,6 +54,97 @@ struct zn_cache {
     struct zn_reader reader; /**< Reader structure for tracking workload location. */
     gint *active_readers;    /**< Owning reference of the list of active readers per zone */
 };
+
+/**
+ * @brief Execute eviction in foreground
+ *
+ * @param cache Pointer to the `zn_cache` structure.
+ */
+void
+zn_fg_evict(struct zn_cache *cache);
+
+/**
+ * @brief Get data from cache
+ *
+ * Gets data from cache if present, otherwise pulls from emulated remote
+ *
+ * @param cache Pointer to the `zn_cache` structure.
+ * @param id Cache item ID to get
+ * @param random_buffer Buffer used for read simulation
+ * @returns Buffer of data recieved or NULL on error (callee is responsible for freeing)
+ */
+unsigned char *
+zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_buffer);
+
+/**
+ * @brief Initializes a `zn_cache` structure with the given parameters.
+ *
+ * This function sets up the cache by initializing its fields, creating the required
+ * data structures (hash table, queues, state array), and setting up synchronization
+ * mechanisms. It also verifies the integrity of the initialized cache.
+ *
+ * @param cache Pointer to the `zn_cache` structure to initialize.
+ * @param info Pointer to `zbd_info` providing zone details.
+ * @param chunk_sz The size of each chunk in bytes.
+ * @param zone_cap The maximum capacity per zone in bytes.
+ * @param fd File descriptor associated with the disk
+ * @param eviction_policy Eviction policy used
+ */
+void
+zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
+              int fd, enum zn_evict_policy_type policy, enum zn_backend backend);
+
+/**
+ * @brief Destroys and cleans up a `zn_cache` structure.
+ *
+ * This function frees all dynamically allocated resources associated with the cache,
+ * including hash tables, queues, and state arrays. It also closes the file descriptor
+ * and clears associated mutexes to ensure proper cleanup.
+ *
+ * @param cache Pointer to the `zn_cache` structure to be destroyed.
+ *
+ * @note After calling this function, the `zn_cache` structure should not be used
+ *       unless it is reinitialized.
+ * @note The function assumes that `zam` is properly initialized before being passed.
+ */
+void
+zn_destroy_cache(struct zn_cache *cache);
+
+/**
+ * @brief Read a chunk from disk
+ *
+ * @param cache Pointer to the `zn_cache` structure
+ * @param zone_pair Chunk, zone pair
+ * @return Buffer read from disk, to be freed by caller
+ */
+unsigned char *
+zn_read_from_disk(struct zn_cache *cache, struct zn_pair *zone_pair);
+
+/**
+ * @brief Write buffer to disk
+ *
+ * @param to_write Total size of write
+ * @param buffer   Buffer to write to disk
+ * @param fd       Disk file descriptor
+ * @param write_size Granularity for each write
+ * @return int     Non-zero on error
+ *
+ * @note Be careful write size is not too large otherwise you can get errors
+ */
+int
+zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write_size,
+             unsigned long long wp_start);
+
+/**
+ * Allocate a buffer prefixed by `zone_id`, with the rest being `RANDOM_DATA`
+ * Simulates remote read with ZE_READ_SLEEP_US
+ *
+ * @param cache Pointer to the `zn_cache` structure.
+ * @param zone_id ID to write to first 4 bytes
+ * @return Allocated buffer or NULL, caller is responsible for free
+ */
+unsigned char *
+zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buffer);
 
 
 #endif // ZNCACHE_H

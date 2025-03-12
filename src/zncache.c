@@ -2,15 +2,12 @@
 #define _XOPEN_SOURCE 500
 #include "zncache.h"
 
-#include "cachemap.h"
 #include "eviction_policy.h"
-#include "eviction_policy_promotional.h"
 #include "libzbd/zbd.h"
 #include "znutil.h"
 #include "zone_state_manager.h"
 
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <glib.h>
 #include <inttypes.h>
@@ -23,12 +20,6 @@
 #include <unistd.h>
 
 #define EVICTION_POLICY ZN_EVICT_CHUNK
-
-#define MICROSECS_PER_SECOND 1000000
-#define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
-#define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND))
-
-#define WRITE_GRANULARITY 4096
 
 // BLOCK_ZONE_CAPACITY Defined at compile-time
 
@@ -69,289 +60,6 @@ zn_print_cache(struct zn_cache *cache) {
 }
 
 /**
- * @brief Initializes a `zn_cache` structure with the given parameters.
- *
- * This function sets up the cache by initializing its fields, creating the required
- * data structures (hash table, queues, state array), and setting up synchronization
- * mechanisms. It also verifies the integrity of the initialized cache.
- *
- * @param cache Pointer to the `zn_cache` structure to initialize.
- * @param info Pointer to `zbd_info` providing zone details.
- * @param chunk_sz The size of each chunk in bytes.
- * @param zone_cap The maximum capacity per zone in bytes.
- * @param fd File descriptor associated with the disk
- * @param eviction_policy Eviction policy used
- */
-static void
-zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum zn_backend backend) {
-    cache->fd = fd;
-    cache->chunk_sz = chunk_sz;
-    cache->nr_zones = info->nr_zones;
-    cache->zone_cap = zone_cap;
-    cache->max_nr_active_zones =
-        info->max_nr_active_zones == 0 ? MAX_OPEN_ZONES : info->max_nr_active_zones;
-    cache->zone_cap = zone_cap;
-    cache->max_zone_chunks = zone_cap / chunk_sz;
-    cache->backend = backend;
-    cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
-
-#ifdef DEBUG
-    printf("Initialized cache:\n");
-    printf("\tchunk_sz=%lu\n", cache->chunk_sz);
-    printf("\tnr_zones=%u\n", cache->nr_zones);
-    printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
-    printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
-    printf("\tmax_nr_active_zones=%u\n", cache->max_nr_active_zones);
-#endif
-
-    // Set up the data structures
-    zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
-    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks, cache->nr_zones,
-        &cache->cache_map, &cache->zone_state);
-    zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
-             cache->max_nr_active_zones, cache->backend);
-
-    g_mutex_init(&cache->reader.lock);
-    cache->reader.query_index = 0;
-    cache->reader.workload_index = 0;
-
-    /* VERIFY_ZE_CACHE(cache); */
-}
-
-/**
- * @brief Destroys and cleans up a `zn_cache` structure.
- *
- * This function frees all dynamically allocated resources associated with the cache,
- * including hash tables, queues, and state arrays. It also closes the file descriptor
- * and clears associated mutexes to ensure proper cleanup.
- *
- * @param cache Pointer to the `zn_cache` structure to be destroyed.
- *
- * @note After calling this function, the `zn_cache` structure should not be used
- *       unless it is reinitialized.
- * @note The function assumes that `zam` is properly initialized before being passed.
- */
-static void
-zn_destroy_cache(struct zn_cache *cache) {
-    (void) cache;
-
-    // TODO assert(!"Todo: clean up cache");
-
-    /* g_hash_table_destroy(cache->zone_map); */
-    /* g_free(cache->zone_state); */
-    /* g_queue_free_full(cache->active_queue, g_free); */
-    /* g_queue_free(cache->lru_queue); */
-
-    /* // TODO: MISSING FREES */
-
-    /* if(cache->backend == ZE_BACKEND_ZNS) { */
-    /*     zbd_close(cache->fd); */
-    /* } else { */
-    /*     close(cache->fd); */
-    /* } */
-
-    /* g_mutex_clear(&cache->cache_lock); */
-    /* g_mutex_clear(&cache->reader.lock); */
-}
-
-/**
- * @brief Read a chunk from disk
- *
- * @param cache Pointer to the `zn_cache` structure
- * @param zone_pair Chunk, zone pair
- * @return Buffer read from disk, to be freed by caller
- */
-static unsigned char *
-zn_read_from_disk(struct zn_cache *cache, struct zn_pair *zone_pair) {
-    unsigned char *data = malloc(cache->chunk_sz);
-    if (data == NULL) {
-        nomem();
-    }
-
-    unsigned long long wp =
-        CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, zone_pair->chunk_offset, zone_pair->zone);
-
-    dbg_printf("[%u,%u] read from write pointer: %llu\n", zone_pair->zone, zone_pair->chunk_offset,
-               wp);
-
-    size_t b = pread(cache->fd, data, cache->chunk_sz, wp);
-    if (b != cache->chunk_sz) {
-        fprintf(stderr, "Couldn't read from fd\n");
-        free(data);
-        return NULL;
-    }
-
-    return data;
-}
-
-/**
- * @brief Write buffer to disk
- *
- * @param to_write Total size of write
- * @param buffer   Buffer to write to disk
- * @param fd       Disk file descriptor
- * @param write_size Granularity for each write
- * @return int     Non-zero on error
- *
- * @note Be careful write size is not too large otherwise you can get errors
- */
-static int
-zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write_size,
-             unsigned long long wp_start) {
-    ssize_t bytes_written;
-    size_t total_written = 0;
-
-    errno = 0;
-    while (total_written < to_write) {
-        bytes_written = pwrite(fd, buffer + total_written, write_size, wp_start + total_written);
-        fsync(fd);
-        // dbg_printf("Wrote %ld bytes to fd at offset=%llu\n", bytes_written,
-        // wp_start+total_written);
-        if ((bytes_written == -1) || (errno != 0)) {
-            dbg_printf("Error: %s\n", strerror(errno));
-            dbg_printf("Couldn't write to fd\n");
-            return -1;
-        }
-        total_written += bytes_written;
-        // dbg_printf("total_written=%ld bytes of %zu\n", total_written, to_write);
-    }
-    return 0;
-}
-
-/**
- * Allocate a buffer prefixed by `zone_id`, with the rest being `RANDOM_DATA`
- * Simulates remote read with ZE_READ_SLEEP_US
- *
- * @param cache Pointer to the `zn_cache` structure.
- * @param zone_id ID to write to first 4 bytes
- * @return Allocated buffer or NULL, caller is responsible for free
- */
-static unsigned char *
-zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id) {
-    unsigned char *data = malloc(cache->chunk_sz);
-    if (data == NULL) {
-        nomem();
-    }
-
-    memcpy(data, RANDOM_DATA, cache->chunk_sz);
-    // Metadata
-    memcpy(data, &zone_id, sizeof(uint32_t));
-
-    g_usleep(ZE_READ_SLEEP_US);
-
-    return data;
-}
-
-static void
-fg_evict(struct zn_cache *cache) {
-    dbg_printf("EVICTING\n");
-    uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
-    if (cache->eviction_policy.type == ZN_EVICT_PROMOTE_ZONE) {
-        for (uint32_t i = 0; i < EVICT_LOW_THRESH_ZONES - free_zones; i++) {
-            int zone =
-                cache->eviction_policy.do_evict(cache->eviction_policy.data);
-            if (zone == -1) {
-                dbg_printf("No zones to evict\n");
-                break;
-            }
-
-            zn_cachemap_clear_zone(&cache->cache_map, zone);
-            while (cache->active_readers[zone] > 0) {
-                g_thread_yield();
-            }
-
-            // We can assume that no threads will create entries to the zone in the cache map,
-            // because it is full.
-            int ret = zsm_evict(&cache->zone_state, zone);
-            if (ret != 0) {
-                assert(!"Issue occurred with evicting zones\n");
-            }
-        }
-    } else if (cache->eviction_policy.type == ZN_EVICT_CHUNK) {
-        (void)cache->eviction_policy.do_evict(cache->eviction_policy.data);
-    } else {
-        assert(!"NYI");
-    }
-}
-
-/**
- * @brief Get data from cache
- *
- * Gets data from cache if present, otherwise pulls from emulated remote
- *
- * @param cache Pointer to the `zn_cache` structure.
- * @param id Cache item ID to get
- * @returns Buffer of data recieved or NULL on error (callee is responsible for freeing)
- */
-static unsigned char *
-zn_cache_get(struct zn_cache *cache, const uint32_t id) {
-    unsigned char *data = NULL;
-
-    struct zone_map_result result = zn_cachemap_find(&cache->cache_map, id);
-
-
-
-    // Found the entry, read it from disk, update eviction, and decrement reader.
-    if (result.type == RESULT_LOC) {
-        unsigned char *data = zn_read_from_disk(cache, &result.value.location);
-        cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
-                                             ZN_READ);
-
-        // Sadly, we have to remember to decrement the reader count here
-        g_atomic_int_dec_and_test(&cache->active_readers[result.value.location.zone]);
-        return data;
-    } else { // result.type == RESULT_COND
-
-        // Repeatedly attempt to get an active zone. This function can fail when there all active
-        // zones are writing, so put this into a while loop.
-        struct zn_pair location;
-        while (true) {
-
-            enum zsm_get_active_zone_error ret = zsm_get_active_zone(&cache->zone_state, &location);
-
-            if (ret == ZSM_GET_ACTIVE_ZONE_RETRY) {
-                g_thread_yield();
-            } else if (ret == ZSM_GET_ACTIVE_ZONE_ERROR) {
-                goto UNDO_MAP;
-            } else if (ret == ZSM_GET_ACTIVE_ZONE_EVICT) {
-                fg_evict(cache);
-            } else {
-                break;
-            }
-        }
-
-        // Emulates pulling in data from a remote source by filling in a cache entry with random
-        // bytes
-        data = zn_gen_write_buffer(cache, id);
-
-        // Write buffer to disk, 4kb blocks at a time
-        unsigned long long wp =
-            CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, location.chunk_offset, location.zone);
-        if (zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
-            dbg_printf("Couldn't write to fd at wp=%llu\n", wp);
-            goto UNDO_ZONE_GET;
-        }
-
-        // Update metadata
-        zn_cachemap_insert(&cache->cache_map, id, location);
-
-        zsm_return_active_zone(&cache->zone_state, &location);
-
-        cache->eviction_policy.update_policy(cache->eviction_policy.data, location, ZN_WRITE);
-
-        return data;
-
-    UNDO_ZONE_GET:
-        zsm_failed_to_write(&cache->zone_state, location);
-    UNDO_MAP:
-        zn_cachemap_fail(&cache->cache_map, id);
-
-        return NULL;
-    }
-}
-
-/**
  * Validate contents of cache read
  *
  * @param cache Pointer to the `zn_cache` structure.
@@ -360,7 +68,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id) {
  * @return Non-zero on error
  */
 static int
-zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id) {
+validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id) {
     uint32_t read_id;
     memcpy(&read_id, data, sizeof(uint32_t));
     if (read_id != id) {
@@ -403,7 +111,7 @@ evict_task(gpointer user_data) {
 
         assert(EVICT_LOW_THRESH_ZONES - free_zones > 0);
 
-        fg_evict(cache);
+        zn_fg_evict(cache);
     }
 
     printf("Evict task completed by thread %p\n", (void *) g_thread_self());
@@ -448,13 +156,13 @@ task_function(gpointer data, gpointer user_data) {
         assert(wi < NR_WORKLOADS);
 
         // Find the data in the cache
-        unsigned char *data = zn_cache_get(thread_data->cache, simple_workload[wi][qi]);
+        unsigned char *data = zn_cache_get(thread_data->cache, simple_workload[wi][qi], RANDOM_DATA);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data\n");
             return;
         }
 #ifdef VERIFY
-        assert(zn_validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
+        assert(validate_read(thread_data->cache, data, simple_workload[wi][qi]) == 0);
 #endif
         free(data);
         printf("[%d]: zn_cache_get(simple_workload[%d][%d]=%d)\n", thread_data->tid, wi, qi,
