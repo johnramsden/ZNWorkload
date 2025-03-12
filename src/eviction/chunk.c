@@ -44,7 +44,7 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
         if (location.chunk_offset == policy->zone_max_chunks-1) {
             // We only add zones to the minheap when they are full.
             dbg_printf("Adding %p (zone=%u) to pqueue\n", (void *)zp, location.zone);
-            zpc->pqueue_entry = zn_minheap_insert(policy->invalid_pqueue, zp, zpc->chunks_in_use);
+            zpc->pqueue_entry = zn_minheap_insert(policy->invalid_pqueue, zpc, zpc->chunks_in_use);
             assert(zpc->pqueue_entry);
             zpc->filled = true;
         }
@@ -111,7 +111,7 @@ zn_policy_chunk_evict(policy_data_t policy) {
         g_hash_table_replace(chunk_policy->chunk_to_lru_map, zp, NULL);
 
         // Invalidate chunk
-        chunk_policy->zone_pool[zp->zone].chunks->in_use = false;
+        chunk_policy->zone_pool[zp->zone].chunks[zp->chunk_offset].in_use = false;
         chunk_policy->zone_pool[zp->zone].chunks_in_use--;
 
         // Update priority
