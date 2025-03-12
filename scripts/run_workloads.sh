@@ -35,7 +35,7 @@ for file in "$directory"/*; do
 		echo "Number of Zones: $num_zones" >> runfile
 		echo "Total Chunks: $total_chunks" >> runfile
 
-		sudo ./buildDir/src/zncache $1 $chunk_size $3 $file $iterations
+		sudo ./buildDir/src/zncache $1 $chunk_size $3 $file $iterations >> runfile
 
     fi
 done
