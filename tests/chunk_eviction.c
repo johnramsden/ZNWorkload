@@ -51,7 +51,7 @@ setup_cache(struct config *cfg) {
     zsm_init(&cfg->cache_config.zone_state, cfg->info.nr_zones, cfg->fd, cfg->zone_capacity, CHUNK_SIZE,
              cfg->cache_config.max_nr_active_zones, cfg->backend);
 
-    
+
 }
 
 int

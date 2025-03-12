@@ -70,9 +70,12 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
     g_mutex_unlock(&policy->policy_mutex);
 }
 
-[[maybe_unused]] static void
+static void
 zn_policy_chunk_gc(policy_data_t policy) {
-    (void)policy;
+    // TODO: If later separated from evict, lock here
+    struct zn_policy_chunk *chunk_policy = policy;
+
+
 
 }
 
@@ -105,6 +108,8 @@ zn_policy_chunk_evict(policy_data_t policy) {
     // We meet thresh for eviction - evict
     for (uint32_t i = 0; i < nr_evict; i++) {
         struct zn_pair * zp = g_queue_pop_head(&chunk_policy->lru_queue);
+        g_hash_table_replace(chunk_policy->chunk_to_lru_map, zp, NULL);
+
         // Invalidate chunk
         chunk_policy->zone_pool[zp->zone].chunks->in_use = false;
         chunk_policy->zone_pool[zp->zone].chunks_in_use--;
@@ -131,6 +136,8 @@ zn_policy_chunk_evict(policy_data_t policy) {
     free_chunks = chunk_policy->total_chunks - in_lru;
     dbg_printf("Free chunks=%u, Chunks in lru=%u, EVICT_HIGH_THRESH_CHUNKS=%u\n",
                free_chunks, in_lru, EVICT_HIGH_THRESH_CHUNKS);
+
+    // Do GC
     zn_policy_chunk_gc(chunk_policy);
 
     g_mutex_unlock(&chunk_policy->policy_mutex);
