@@ -28,8 +28,10 @@ On evict:
 * if `total_chunks-len(lru_queue)` < high chunk thresh, evict
 * Invalidation:
   * Update `chunks_in_use`, `chunks`
+  * Update minheap
   * Update Invalid queue in ZSM
-* Update ZSM (`zn_cachemap_clear_chunk`)
+  * Update cachemap (`zn_cachemap_clear_chunk`)
+  * Update ZSM (`zsm_mark_chunk_invalid`)
 
 On GC:
 * Pop from `invalid_pqueue`, migrate via:

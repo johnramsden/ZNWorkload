@@ -347,17 +347,17 @@ zsm_get_num_invalid_chunks(struct zone_state_manager *state, uint32_t zone) {
 }
 
 void
-zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair location) {
+zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair *location) {
     g_mutex_lock(&state->state_mutex);
     dbg_print_g_queue(
         "state[location.zone].state->invalid before mark",
-        state[location.zone].state->invalid,
+        state[location->zone].state->invalid,
         PRINT_G_QUEUE_GINT
     );
-    g_queue_push_tail(state[location.zone].state->invalid, GUINT_TO_POINTER(location.chunk_offset));
+    g_queue_push_tail(state[location->zone].state->invalid, GUINT_TO_POINTER(location->chunk_offset));
     dbg_print_g_queue(
         "state[location.zone].state->invalid after mark",
-        state[location.zone].state->invalid,
+        state[location->zone].state->invalid,
         PRINT_G_QUEUE_GINT
     );
     g_mutex_unlock(&state->state_mutex);

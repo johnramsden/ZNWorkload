@@ -95,34 +95,6 @@ struct zn_thread_data {
     bool done;              /**< Marks completed */
 };
 
-/**
- * @brief Get zone capacity
- *
- * @param[in] fd open zone file descriptor
- * @param[out] zone_cap zone capacity
- * @return non-zero on error
- */
-static int
-zone_cap(int fd, uint64_t *zone_capacity) {
-    off_t ofst = 0;
-    off_t len = 1;
-    volatile struct zbd_zone zone;
-
-    unsigned int nr_zones;
-
-    // See https://github.com/johnramsden/ZNWorkload/issues/12
-
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
-    int ret = zbd_report_zones(fd, ofst, len, ZBD_RO_ALL, &zone, &nr_zones);
-    #pragma GCC diagnostic pop
-    if (ret != 0) {
-        return ret;
-    }
-    *zone_capacity = zone.capacity;
-    return ret;
-}
-
 [[maybe_unused]] static void
 zn_print_cache(struct zn_cache *cache) {
     (void) cache;
@@ -584,7 +556,6 @@ main(int argc, char **argv) {
         }
         info.nr_zones = ((long) size / BLOCK_ZONE_CAPACITY);
         info.max_nr_active_zones = 0;
-        
     }
 
     if (fd < 0) {

@@ -109,18 +109,28 @@ zn_policy_chunk_evict(policy_data_t policy) {
         chunk_policy->zone_pool[zp->zone].chunks->in_use = false;
         chunk_policy->zone_pool[zp->zone].chunks_in_use--;
 
-        // zsm_mark_chunk_invalid(chunk_policy->map)
+        // Update priority
+        zn_minheap_update_by_entry(
+            chunk_policy->invalid_pqueue,
+            chunk_policy->zone_pool[zp->zone].pqueue_entry,
+            chunk_policy->zone_pool[zp->zone].chunks_in_use
+        );
 
-        // Update ZSM
+        // Update ZSM, cachemap
+        zsm_mark_chunk_invalid(chunk_policy->zsm, zp);
+        zn_cachemap_clear_chunk(chunk_policy->cachemap, zp);
+
+        // TODO: SSD look at invalid (not here, on write)
     }
-
-
-
 
     dbg_printf("State after chunk evict\n");
     dbg_print_g_queue("lru_queue (zone,chunk,id,in_use)", &chunk_policy->lru_queue, PRINT_G_QUEUE_ZN_PAIR);
     dbg_print_g_hash_table("chunk_to_lru_map (id,zone,chunk,in_use)", chunk_policy->chunk_to_lru_map, PRINT_G_HASH_TABLE_ZN_PAIR_NODE);
 
+    in_lru = g_queue_get_length(&chunk_policy->lru_queue);
+    free_chunks = chunk_policy->total_chunks - in_lru;
+    dbg_printf("Free chunks=%u, Chunks in lru=%u, EVICT_HIGH_THRESH_CHUNKS=%u\n",
+               free_chunks, in_lru, EVICT_HIGH_THRESH_CHUNKS);
     zn_policy_chunk_gc(chunk_policy);
 
     g_mutex_unlock(&chunk_policy->policy_mutex);

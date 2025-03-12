@@ -101,6 +101,16 @@ nomem();
 void
 print_zbd_info(struct zbd_info *info);
 
+/**
+ * @brief Get zone capacity
+ *
+ * @param[in] fd open zone file descriptor
+ * @param[out] zone_cap zone capacity
+ * @return non-zero on error
+ */
+int
+zone_cap(int fd, uint64_t *zone_capacity);
+
 // Timing
 
 #define TIME_NOW(_t) (clock_gettime(CLOCK_MONOTONIC, (_t)))

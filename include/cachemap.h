@@ -82,7 +82,7 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
  *   - Additionally clears the Zone ID → Data ID map
  */
 void
-zn_cachemap_clear_chunk(struct zn_cachemap *map, struct zn_pair location);
+zn_cachemap_clear_chunk(struct zn_cachemap *map, struct zn_pair *location);
 
 /** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
  * @param zone the zone

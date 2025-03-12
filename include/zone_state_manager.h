@@ -134,7 +134,7 @@ zsm_get_num_full_zones(struct zone_state_manager *state);
 
 /** @brief Mark a chunk as invalid */
 void
-zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair location);
+zsm_mark_chunk_invalid(struct zone_state_manager *state, struct zn_pair *location);
 
 /** @brief Returns invalid chunks in a zone */
 uint32_t
