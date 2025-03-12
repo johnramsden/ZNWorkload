@@ -5,6 +5,8 @@
 
 #include "libzbd/zbd.h"
 
+#include "zncache.h"
+
 #include <glib.h>
 
 /* Will only print messages (to stdout) when DEBUG is defined */
@@ -110,6 +112,15 @@ print_zbd_info(struct zbd_info *info);
  */
 int
 zone_cap(int fd, uint64_t *zone_capacity);
+
+void
+print_zn_pair_list(struct zn_pair *list, uint32_t len);
+
+#ifdef DEBUG
+#    define dbg_print_zn_pair_list(list, len) print_zn_pair_list(list, len)
+#else
+#    define dbg_print_zn_pair_list(...)
+#endif
 
 // Timing
 

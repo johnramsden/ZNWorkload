@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 struct eviction_policy_chunk_zone {
+    uint32_t zone_id;
     struct zn_pair *chunks; /**< Pool of chunks, backing for lru */
     uint32_t chunks_in_use;
     bool filled;

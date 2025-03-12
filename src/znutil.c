@@ -112,7 +112,14 @@ print_g_queue(char *name, const GQueue *queue, const enum print_g_queue_type typ
     puts("");
 }
 
-
+void
+print_zn_pair_list(struct zn_pair *list, uint32_t len) {
+    for (uint32_t i = 0; i < len; i++) {
+        printf("[%d: (zone=%u, chunk=%u, id=%u, in_use=%s)], ",
+               i, list[i].zone, list[i].chunk_offset, list[i].id, list[i].in_use ? "true" : "false");
+    }
+    puts("");
+}
 
 unsigned char *
 generate_random_buffer(size_t size) {

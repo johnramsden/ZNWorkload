@@ -1,13 +1,14 @@
 #include "eviction_policy.h"
 #include "eviction_policy_chunk.h"
-#include "glib.h"
-#include "glibconfig.h"
 #include "znutil.h"
+#include "minheap.h"
+#include "zone_state_manager.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <zone_state_manager.h>
+#include <glib.h>
+#include <glibconfig.h>
 
 void
 zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
@@ -37,6 +38,7 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
         zp->id = location.id;
         zp->in_use = true;
         zpc->chunks_in_use++; // Need to update here on SSD incase invalidated then re-written
+        zpc->zone_id = location.zone;
         g_queue_push_tail(&policy->lru_queue, zp);
         GList *node = g_queue_peek_tail_link(&policy->lru_queue);
         g_hash_table_insert(policy->chunk_to_lru_map, zp, node);
@@ -75,8 +77,25 @@ zn_policy_chunk_gc(policy_data_t policy) {
     // TODO: If later separated from evict, lock here
     struct zn_policy_chunk *chunk_policy = policy;
 
+    uint32_t free_zones = zsm_get_num_free_zones(chunk_policy->zsm);
+    if (free_zones > EVICT_HIGH_THRESH_ZONES) {
+        return;
+    }
+
+    while (free_zones < EVICT_LOW_THRESH_ZONES) {
+        struct zn_minheap_entry *ent = zn_minheap_extract_min(chunk_policy->invalid_pqueue);
+        struct eviction_policy_chunk_zone * zone = ent->data;
+        assert(zone);
+        dbg_printf("Found minheap_entry priority=%u, chunks_in_use=%u, zone=%u\n",
+            ent->priority,  zone->chunks_in_use, zone->zone_id);
+        dbg_printf("zone[%u] chunks:\n", zone->zone_id);
+        dbg_print_zn_pair_list(zone->chunks, chunk_policy->zone_max_chunks);
+
+        // Found zone of chunks, remove accordingly
 
 
+        free_zones = zsm_get_num_free_zones(chunk_policy->zsm);
+    }
 }
 
 int
