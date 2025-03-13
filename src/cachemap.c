@@ -4,6 +4,7 @@
 #include "glib.h"
 #include "glibconfig.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -19,7 +20,7 @@ zn_cachemap_init(struct zn_cachemap *map, const int num_zones, gint *active_read
 
     // Zone → Data ID
     for (int i = 0; i < num_zones; i++) {
-        map->data_map[i] = g_array_new(FALSE, FALSE, sizeof(int));
+        map->data_map[i] = g_array_new(FALSE, FALSE, sizeof(uint32_t));
     }
 
     map->active_readers = active_readers_arr;
@@ -97,15 +98,15 @@ zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id) {
 }
 
 void
-zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location) {
+zn_cachemap_insert(struct zn_cachemap *map, const uint32_t data_id, struct zn_pair location) {
     assert(map);
 
     g_mutex_lock(&map->cache_map_mutex);
 
     // It must contain an entry if the thread called zn_cachemap_find beforehand
-    assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
+    assert(g_hash_table_contains(map->zone_map, GUINT_TO_POINTER(data_id)));
 
-    struct zone_map_result *result = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
+    struct zone_map_result *result = g_hash_table_lookup(map->zone_map, GUINT_TO_POINTER(data_id));
     assert(result->type == RESULT_COND);
 
     GCond *condition = result->value.write_finished;
@@ -126,9 +127,9 @@ zn_cachemap_clear_zone(struct zn_cachemap *map, uint32_t zone) {
     g_mutex_lock(&map->cache_map_mutex);
 
     for (guint i = 0; i < map->data_map[zone]->len; i++) {
-        int data_id = g_array_index(map->data_map[zone], int, i);
-        assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
-        struct zone_map_result *res = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
+        uint32_t data_id = g_array_index(map->data_map[zone], uint32_t, i);
+        assert(g_hash_table_contains(map->zone_map, GUINT_TO_POINTER(data_id)));
+        struct zone_map_result *res = g_hash_table_lookup(map->zone_map, GUINT_TO_POINTER(data_id));
         assert(res->type == RESULT_LOC);
         assert(res->value.location.zone == zone);
 

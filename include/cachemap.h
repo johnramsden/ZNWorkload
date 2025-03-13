@@ -2,6 +2,7 @@
 
 #include "glib.h"
 #include "zncache.h"
+#include <stdint.h>
 
 /**
  * @struct zn_cache_map
@@ -71,7 +72,7 @@ zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id);
  *     here by signalling when the thread calls this function.
  */
 void
-zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location);
+zn_cachemap_insert(struct zn_cachemap *map, const uint32_t data_id, struct zn_pair location);
 
 /** @brief Clears all entries of a zone in the mapping. Called by eviction threads.
  * @param zone the zone
