@@ -111,7 +111,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
 void
 zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum zn_backend backend) {
+              int fd, enum zn_evict_policy_type policy, enum zn_backend backend, uint32_t* workload_buffer, uint64_t workload_max) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -122,6 +122,8 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->max_zone_chunks = zone_cap / chunk_sz;
     cache->backend = backend;
     cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
+    cache->reader.workload_buffer = workload_buffer;
+    cache->reader.workload_max = workload_max;
 
 #ifdef DEBUG
     printf("Initialized cache:\n");
@@ -139,7 +141,6 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
              cache->max_nr_active_zones, cache->backend);
 
     g_mutex_init(&cache->reader.lock);
-    cache->reader.query_index = 0;
     cache->reader.workload_index = 0;
 
     /* VERIFY_ZE_CACHE(cache); */

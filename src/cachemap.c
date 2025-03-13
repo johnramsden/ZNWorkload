@@ -5,6 +5,7 @@
 #include "glib.h"
 #include "glibconfig.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <znutil.h>
@@ -100,7 +101,7 @@ zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id) {
 }
 
 void
-zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location) {
+zn_cachemap_insert(struct zn_cachemap *map, const uint32_t data_id, struct zn_pair location) {
     assert(map);
 
     g_mutex_lock(&map->cache_map_mutex);
@@ -108,9 +109,9 @@ zn_cachemap_insert(struct zn_cachemap *map, int data_id, struct zn_pair location
     dbg_print_g_hash_table("map->data_map[location.zone]", map->data_map[location.zone], PRINT_G_HASH_TABLE_GINT);
 
     // It must contain an entry if the thread called zn_cachemap_find beforehand
-    assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));
+    assert(g_hash_table_contains(map->zone_map, GUINT_TO_POINTER(data_id)));
 
-    struct zone_map_result *result = g_hash_table_lookup(map->zone_map, GINT_TO_POINTER(data_id));
+    struct zone_map_result *result = g_hash_table_lookup(map->zone_map, GUINT_TO_POINTER(data_id));
     assert(result->type == RESULT_COND);
 
     GCond *condition = result->value.write_finished;
