@@ -27,10 +27,10 @@
  */
 struct zn_reader {
     GMutex lock;             /**< Mutex to synchronize access to the reader state. */
-    uint32_t query_index;    /**< Index of the next query to be processed. */
-    uint32_t workload_index; /**< Index of the workload associated with the reader. */
+    uint64_t workload_index; /**< Index of the workload associated with the reader. */
+    uint32_t* workload_buffer;
+    uint64_t workload_max;
 };
-
 /**
  * @struct zn_cache
  * @brief Represents a cache system that manages data storage in predefined zones.
@@ -53,6 +53,8 @@ struct zn_cache {
     struct zone_state_manager zone_state;
     struct zn_reader reader; /**< Reader structure for tracking workload location. */
     gint *active_readers;    /**< Owning reference of the list of active readers per zone */
+
+
 };
 
 /**
@@ -92,7 +94,8 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
  */
 void
 zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum zn_backend backend);
+              int fd, enum zn_evict_policy_type policy, enum zn_backend backend, uint32_t* workload_buffer,
+              uint64_t workload_max);
 
 /**
  * @brief Destroys and cleans up a `zn_cache` structure.
