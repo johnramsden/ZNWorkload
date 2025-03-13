@@ -34,7 +34,7 @@ int test_multiple_insert_extract() {
 
     int *d = malloc(sizeof(int) * entries);
 
-    for (int i = 0; i < entries; i++) {
+    for (uint32_t i = 0; i < entries; i++) {
         d[i] = (i+1)*100; // 100, 200, 300, 400
     }
 
@@ -88,7 +88,7 @@ int test_heap_expansion() {
 
     int *d = malloc(sizeof(int) * entries);
 
-    for (int i = 0; i < entries; i++) {
+    for (uint32_t i = 0; i < entries; i++) {
         d[i] = i;
     }
 

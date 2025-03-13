@@ -38,20 +38,7 @@ struct config {
 
 void
 setup_cache(struct config *cfg) {
-    cfg->cache_config.max_nr_active_zones =
-        cfg->info.max_nr_active_zones == 0 ? MAX_OPEN_ZONES : cfg->info.max_nr_active_zones;
-    cfg->cache_config.max_zone_chunks = cfg->zone_capacity / CHUNK_SIZE;
-
-    gint active_readers[ACTIVE_READERS];
-
-    // Set up the data structures
-    zn_cachemap_init(&cfg->cache_config.cache_map, cfg->info.nr_zones, active_readers);
-    zn_evict_policy_init(&cfg->cache_config.eviction_policy, ZN_EVICT_CHUNK, cfg->cache_config.max_zone_chunks, cfg->info.nr_zones,
-        &cfg->cache_config.cache_map, &cfg->cache_config.zone_state);
-    zsm_init(&cfg->cache_config.zone_state, cfg->info.nr_zones, cfg->fd, cfg->zone_capacity, CHUNK_SIZE,
-             cfg->cache_config.max_nr_active_zones, cfg->backend);
-
-
+    (void)cfg;
 }
 
 int

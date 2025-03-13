@@ -3,7 +3,8 @@ project_tests = [
 ]
 
 foreach test_name : project_tests
-    src= files(
+    src = files(
+        meson.project_source_root() + '/src/cache.c',
         meson.project_source_root() + '/src/znutil.c',
         meson.project_source_root() + '/src/cachemap.c',
         meson.project_source_root() + '/src/zone_state_manager.c',
@@ -11,8 +12,8 @@ foreach test_name : project_tests
         meson.project_source_root() + '/src/minheap.c',
         meson.project_source_root() + '/src/eviction/promotional.c',
         meson.project_source_root() + '/src/eviction/chunk.c',
-        meson.project_source_root() + '/src/eviction/zone.c',
-        test_name + '.c')
+        test_name + '.c'
+    )
     test_exe = executable(test_name, src,
                           include_directories : inc_dir,
                           c_args : cflags,

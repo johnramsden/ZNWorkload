@@ -1,4 +1,6 @@
 #Get the sources
+
+# DONT FORGET TO ADD NEW FILES TO TEST MESON
 srcs = files(
     'zncache.c',
     'cache.c',
@@ -8,8 +10,7 @@ srcs = files(
     'eviction_policy.c',
     'minheap.c',
     'eviction/promotional.c',
-    'eviction/chunk.c',
-    'eviction/zone.c'
+    'eviction/chunk.c'
 )
 
 executable('zncache',
