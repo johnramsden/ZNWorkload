@@ -51,10 +51,13 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
             zpc->filled = true;
         }
     } else if (io_type == ZN_READ) {
-        if (node->data) {
-            gpointer data = node->data;
-            g_queue_delete_link(&p->lru_queue, node);
-            g_queue_push_tail(&p->lru_queue, data);
+
+        if (node) {
+			gpointer data = node->data;
+			g_queue_delete_link(&p->lru_queue, node);
+			g_queue_push_tail(&p->lru_queue, data);
+			GList *new_node = g_queue_peek_tail_link(&p->lru_queue);
+			g_hash_table_replace(p->chunk_to_lru_map, zp, new_node);
         }
 
         // If node->data == NULL, the zone is not in the LRU queue. This

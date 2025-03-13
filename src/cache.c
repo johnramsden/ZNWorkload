@@ -92,11 +92,11 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
         }
 
         // Update metadata
-        zn_cachemap_insert(&cache->cache_map, id, location);
-
         zsm_return_active_zone(&cache->zone_state, &location);
 
         cache->eviction_policy.update_policy(cache->eviction_policy.data, location, ZN_WRITE);
+
+        zn_cachemap_insert(&cache->cache_map, id, location);
 
         return data;
 
