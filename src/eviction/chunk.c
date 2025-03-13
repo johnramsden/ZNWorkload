@@ -84,75 +84,59 @@ zn_policy_chunk_gc(policy_data_t policy) {
 
     while (free_zones < EVICT_LOW_THRESH_ZONES) {
         struct zn_minheap_entry *ent = zn_minheap_extract_min(p->invalid_pqueue);
-        struct eviction_policy_chunk_zone * zone = ent->data;
-        assert(zone);
+        struct eviction_policy_chunk_zone * old_zone = ent->data;
+        assert(old_zone);
         dbg_printf("Found minheap_entry priority=%u, chunks_in_use=%u, zone=%u\n",
-            ent->priority,  zone->chunks_in_use, zone->zone_id);
-        dbg_printf("zone[%u] chunks:\n", zone->zone_id);
-        dbg_print_zn_pair_list(zone->chunks, p->cache->max_zone_chunks);
-
-
+            ent->priority,  old_zone->chunks_in_use, old_zone->zone_id);
+        dbg_printf("zone[%u] chunks:\n", old_zone->zone_id);
+        dbg_print_zn_pair_list(old_zone->chunks, p->cache->max_zone_chunks);
 
         // Naive?
         for (uint32_t i = 0; i < p->cache->max_zone_chunks; i++) {
-            if (!zone->chunks[i].in_use) {
+            if (!old_zone->chunks[i].in_use) {
                 continue;
             }
-            // TODO
-            assert(!"NYI");
 
-            // read in old data
-            // grab active zone
-            // write out old data
-            // Update mappings
-
-#ifdef WTF
-            // TODO: Need a lock? Not using zn_cachemap_find
-            // TODO: Reader count?
-
-            // TODO: FAIL?
-            // Repeatedly attempt to get an active zone. This function can fail when there all active
-            // zones are writing, so put this into a while loop.
-            struct zn_pair location;
-            while (true) {
-                enum zsm_get_active_zone_error ret = zsm_get_active_zone(&p->cache->zone_state, &location);
-
-                if (ret == ZSM_GET_ACTIVE_ZONE_RETRY) {
-                    g_thread_yield();
-                } else if (ret == ZSM_GET_ACTIVE_ZONE_ERROR) {
-                    assert(!"???");
-                } else if (ret == ZSM_GET_ACTIVE_ZONE_EVICT) {
-                    assert(!"???");
-                } else {
-                    break;
-                }
+            struct zn_pair new_location;
+            enum zsm_get_active_zone_error ret = zsm_get_active_zone(&p->cache->zone_state, &new_location);
+            if (ret != ZSM_GET_ACTIVE_ZONE_SUCCESS) {
+                assert(!"TODO");
+                // TODO: ???
             }
 
-            unsigned char *data = zn_read_from_disk(p->cache, &zone->chunks[i]);
-            int ret = zn_write_out(
-                p->cache->fd,
-                p->cache->chunk_sz,
-                data,
-                WRITE_GRANULARITY,
+            // Read the chunk from the old zone
+            unsigned char *data = zn_read_from_disk(p->cache, &old_zone->chunks[i]);
+            assert(data);
 
-            );
-
-            // Write buffer to disk, 4kb blocks at a time
-            unsigned long long wp =
-                CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, location.chunk_offset, location.zone);
-            if (zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
-                dbg_printf("Couldn't write to fd at wp=%llu\n", wp);
-                goto UNDO_ZONE_GET;
+            // Write the chunk to the new zone
+            unsigned long long wp = CHUNK_POINTER(p->cache->zone_cap, p->cache->chunk_sz,
+                                                  new_location.chunk_offset, new_location.zone);
+            if (zn_write_out(p->cache->fd, p->cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
+                assert(!"Failed to write chunk to new zone");
             }
 
-            // Update metadata
-            zn_cachemap_insert(&p->cache->cache_map, id, location);
+            // Update the cache map
+            zn_cachemap_insert(&p->cache->cache_map, old_zone->chunks[i].id, new_location); // Add new mapping
 
-            zsm_return_active_zone(&p->cache->zone_state, &location);
-#endif
+            // Update the eviction policy metadata
+            old_zone->chunks[i].in_use = false;
+            old_zone->chunks_in_use--;
 
+            // Update the new zone's metadata
+            struct eviction_policy_chunk_zone *new_zone = &p->zone_pool[new_location.zone];
+            new_zone->chunks[new_location.chunk_offset] = old_zone->chunks[i];
+            new_zone->chunks[new_location.chunk_offset].in_use = true;
+            new_zone->chunks_in_use++;
 
+            // Update the LRU queue
+            g_queue_push_tail(&p->lru_queue, &new_zone->chunks[new_location.chunk_offset]);
+
+            // Free the data buffer
+            free(data);
         }
+        zn_cachemap_clear_zone(&p->cache->cache_map, old_zone->zone_id);
+        // Reset the old zone
+        zsm_evict(&p->cache->zone_state, old_zone->zone_id);
         free_zones = zsm_get_num_free_zones(&p->cache->zone_state);
     }
 }
