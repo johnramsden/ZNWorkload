@@ -47,9 +47,7 @@ zn_pair_equal(gconstpointer a, gconstpointer b) {
 #endif
 
 void
-zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type,
-                     uint32_t zone_max_chunks, uint32_t nr_zones, struct zn_cachemap *cachemap,
-                     struct zone_state_manager *zsm) {
+zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type, struct zn_cache *cache) {
 
     switch (type) {
         case ZN_EVICT_PROMOTE_ZONE: {
@@ -59,7 +57,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             data->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
             assert(data->zone_to_lru_map);
 
-            data->zone_max_chunks = zone_max_chunks;
+            data->zone_max_chunks = cache->max_zone_chunks;
 
             assert(data->zone_to_lru_map);
             g_queue_init(&data->lru_queue);
@@ -78,10 +76,12 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             struct zn_policy_chunk *data = malloc(sizeof(struct zn_policy_chunk));
             assert(data);
 
-            data->zsm = zsm;
-            data->cachemap = cachemap;
+            data->cache = cache;
 
-            data->total_chunks = nr_zones * zone_max_chunks;
+            data->chunk_buf = malloc(cache->max_zone_chunks * cache->chunk_sz);
+            assert(data->chunk_buf);
+
+            data->total_chunks = cache->nr_zones * cache->max_zone_chunks;
 
             // zn_pair to lru_map
             data->chunk_to_lru_map = g_hash_table_new(
@@ -89,14 +89,14 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             );
 
             // Setup backing pool where zones marked not in use
-            data->zone_pool = g_new(struct eviction_policy_chunk_zone, nr_zones);
+            data->zone_pool = g_new(struct eviction_policy_chunk_zone, cache->nr_zones);
             assert(data->zone_pool);
-            for (uint32_t z = 0; z < nr_zones; z++) {
+            for (uint32_t z = 0; z < cache->nr_zones; z++) {
                 data->zone_pool[z].chunks_in_use = 0;
                 data->zone_pool[z].filled = false;
-                data->zone_pool[z].chunks = g_new(struct zn_pair, zone_max_chunks);
+                data->zone_pool[z].chunks = g_new(struct zn_pair, cache->max_zone_chunks);
                 assert(data->zone_pool[z].chunks);
-                for (uint32_t c = 0; c < zone_max_chunks; c++) {
+                for (uint32_t c = 0; c < cache->max_zone_chunks; c++) {
                     data->zone_pool[z].chunks[c].chunk_offset = 0;
                     data->zone_pool[z].chunks[c].in_use = false;
                     assert(g_hash_table_insert(
@@ -107,12 +107,11 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
                 }
             }
 
-            data->invalid_pqueue = zn_minheap_init(nr_zones);
+            data->invalid_pqueue = zn_minheap_init(cache->nr_zones);
             assert(data->invalid_pqueue);
 
             g_mutex_init(&data->policy_mutex);
 
-            data->zone_max_chunks = zone_max_chunks;
             assert(data->chunk_to_lru_map);
 
             g_queue_init(&data->lru_queue);

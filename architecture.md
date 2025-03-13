@@ -35,8 +35,16 @@ On evict:
 
 On GC:
 * Pop from `invalid_pqueue`, migrate via:
-  * grab zones from active queues, write until all valid written and low water thresh met
-  * If SSD update zsm invalid
+  * read in old data
+  * grab active zone
+  * write out old data
+  * Update mappings
+
+Issues
+  * What if none avail?
+    * Add extra GC only zone?
+  * Do we buffer into RAM then send all at once to disk?
+  * Alternative -> read chunk, write chunk, downside, requires extra zone
 
 Issues:
 * GC on SSD - skip, instead use `zn_zone` invalid queue

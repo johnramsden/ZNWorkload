@@ -26,11 +26,11 @@ struct zn_policy_chunk {
     struct zn_minheap * invalid_pqueue; /**< Priority queue keeping track of invalid zones */
 
     struct eviction_policy_chunk_zone *zone_pool; /**< Pool of zones, backing for lru */
-    struct zn_cachemap *cachemap; /**< Shared pointer to cachemap (not owned by policy) */
-    struct zone_state_manager *zsm; /**< Shared pointer to zsm (not owned by policy) */
 
-    uint32_t zone_max_chunks;   /**< Number of chunks in a zone */
+    struct zn_cache *cache; /**< Shared pointer to cache (not owned by policy) */
     uint32_t total_chunks;   /**< Number of chunks on disk */
+
+    unsigned char *chunk_buf; /**< Buffer for use during GC */
 };
 
 /** @brief Updates the chunk LRU policy

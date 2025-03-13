@@ -50,8 +50,6 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
     struct zone_map_result result = zn_cachemap_find(&cache->cache_map, id);
 
-
-
     // Found the entry, read it from disk, update eviction, and decrement reader.
     if (result.type == RESULT_LOC) {
         unsigned char *data = zn_read_from_disk(cache, &result.value.location);
@@ -136,8 +134,7 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 
     // Set up the data structures
     zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
-    zn_evict_policy_init(&cache->eviction_policy, policy, cache->max_zone_chunks, cache->nr_zones,
-        &cache->cache_map, &cache->zone_state);
+    zn_evict_policy_init(&cache->eviction_policy, policy, cache);
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 

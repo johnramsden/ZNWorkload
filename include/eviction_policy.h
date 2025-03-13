@@ -1,8 +1,9 @@
 #pragma once
 
-#include "cachemap.h"
-#include "zone_state_manager.h"
 #include "znbackend.h"
+
+// Forward declare zn_cache to avoid cyclic dependency
+struct zn_cache;
 
 #include <stdint.h>
 
@@ -56,6 +57,4 @@ struct zn_evict_policy {
 /** @brief Sets up the data structure for the selected eviction policy.
  */
 void
-zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type,
-uint32_t zone_max_chunks, uint32_t nr_zones, struct zn_cachemap *cachemap,
-struct zone_state_manager *zsm);
+zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type, struct zn_cache *cache);
