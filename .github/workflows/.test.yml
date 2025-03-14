@@ -108,8 +108,8 @@ jobs:
           sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
           ls /dev/nullb*
           cd ZNWorkload
-          sudo meson test -C buildDir --list
-          if ! meson test -C buildDir; then
+          meson test -C buildDir --list
+          if ! sudo meson test -C buildDir; then
               [ -f ./buildDir/meson-logs/testlog.txt ] && cat ./buildDir/meson-logs/testlog.txt
               exit 1
           fi
