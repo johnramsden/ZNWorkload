@@ -1,3 +1,6 @@
 [submodule "vendor/libzbd"]
 	path = vendor/libzbd
 	url = https://github.com/westerndigitalcorporation/libzbd
+[submodule "vendor/workloadgen"]
+	path = vendor/workloadgen
+	url = https://github.com/johnramsden/ZNWorkload-YCSB
