@@ -14,7 +14,6 @@
 
 void
 zn_fg_evict(struct zn_cache *cache) {
-    dbg_printf("EVICTING\n");
     uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
     if (cache->eviction_policy.type == ZN_EVICT_PROMOTE_ZONE) {
         for (uint32_t i = 0; i < EVICT_LOW_THRESH_ZONES - free_zones; i++) {

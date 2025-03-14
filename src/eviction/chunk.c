@@ -150,21 +150,23 @@ zn_policy_chunk_evict(policy_data_t policy) {
 
     g_mutex_lock(&p->policy_mutex);
 
-    dbg_printf("State before chunk evict\n");
-    dbg_print_g_queue("lru_queue (zone,chunk,id,in_use)", &p->lru_queue, PRINT_G_QUEUE_ZN_PAIR);
-    dbg_print_g_hash_table("chunk_to_lru_map (id,zone,chunk,in_use)", p->chunk_to_lru_map, PRINT_G_HASH_TABLE_ZN_PAIR_NODE);
 
     uint32_t in_lru = g_queue_get_length(&p->lru_queue);
     uint32_t free_chunks = p->total_chunks - in_lru;
 
-    dbg_printf("Free chunks=%u, Chunks in lru=%u, EVICT_HIGH_THRESH_CHUNKS=%u\n",
-               free_chunks, in_lru, EVICT_HIGH_THRESH_CHUNKS);
-
     if ((in_lru == 0) || (free_chunks > EVICT_HIGH_THRESH_CHUNKS)) {
-        dbg_printf("Nothing to evict\n");
         g_mutex_unlock(&p->policy_mutex);
         return 1;
     }
+
+    dbg_printf("State before chunk evict\n");
+    dbg_print_g_queue("lru_queue (zone,chunk,id,in_use)", &p->lru_queue, PRINT_G_QUEUE_ZN_PAIR);
+    dbg_print_g_hash_table("chunk_to_lru_map (id,zone,chunk,in_use)", p->chunk_to_lru_map, PRINT_G_HASH_TABLE_ZN_PAIR_NODE);
+    uint32_t free_zones = zsm_get_num_free_zones(&p->cache->zone_state);
+
+    dbg_printf("Free zones before evict=%u\n", free_zones);
+    dbg_printf("Free chunks=%u, Chunks in lru=%u, EVICT_HIGH_THRESH_CHUNKS=%u\n",
+           free_chunks, in_lru, EVICT_HIGH_THRESH_CHUNKS);
 
     uint32_t nr_evict = EVICT_LOW_THRESH_CHUNKS-free_chunks;
 
@@ -204,6 +206,9 @@ zn_policy_chunk_evict(policy_data_t policy) {
 
     // Do GC
     zn_policy_chunk_gc(p);
+
+    free_zones = zsm_get_num_free_zones(&p->cache->zone_state);
+    dbg_printf("Free zones after evict=%u\n", free_zones);
 
     g_mutex_unlock(&p->policy_mutex);
 
