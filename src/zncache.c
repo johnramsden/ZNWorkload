@@ -21,7 +21,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#define EVICTION_POLICY ZN_EVICT_CHUNK
+#define EVICTION_POLICY ZN_EVICT_PROMOTE_ZONE
 
 // BLOCK_ZONE_CAPACITY Defined at compile-time
 

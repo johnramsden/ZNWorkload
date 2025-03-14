@@ -11,14 +11,14 @@
 
 #define ACTIVE_READERS 1
 #define CHUNK_SIZE 524288
-#define NUM_DEV 2
+#define NUM_DEV 1
 #define WORKLOAD_SZ 28
 
 unsigned char *RANDOM_DATA = NULL;
 
 char *devices[NUM_DEV] = {
     "/dev/nullb0", // ZNS
-    "/dev/nullb1" // Conv
+    // "/dev/nullb1" // Conv
 };
 
 uint32_t workload[WORKLOAD_SZ] = {
