@@ -61,32 +61,6 @@ zn_print_cache(struct zn_cache *cache) {
 }
 
 /**
- * Validate contents of cache read
- *
- * @param cache Pointer to the `zn_cache` structure.
- * @param data Data to validate against RANDOM_DATA
- * @param id Identifier that should be in first 4 bytes
- * @return Non-zero on error
- */
-static int
-validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id) {
-    uint32_t read_id;
-    memcpy(&read_id, data, sizeof(uint32_t));
-    if (read_id != id) {
-        dbg_printf("Invalid read_id(%u)!=id(%u)\n", read_id, id);
-        return -1;
-    }
-    // 4 bytes for int
-    for (uint32_t i = sizeof(uint32_t); i < cache->chunk_sz; i++) {
-        if (data[i] != RANDOM_DATA[i]) {
-            dbg_printf("data[%d]!=RANDOM_DATA[%d]\n", read_id, id);
-            return -1;
-        }
-    }
-    return 0;
-}
-
-/**
  * Eviction thread
  *
  * @param user_data thread_data
@@ -161,7 +135,7 @@ task_function(gpointer data, gpointer user_data) {
             return;
         }
 #ifdef VERIFY
-        assert(validate_read(thread_data->cache, data, data_id) == 0);
+        assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
         free(data);
 

@@ -2,6 +2,8 @@ project_tests = [
     'minheap', 'minheap_concurrent', 'chunk_eviction'
 ]
 
+test_cflags = ['-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string()]
+
 foreach test_name : project_tests
     src = files(
         meson.project_source_root() + '/src/cache.c',
@@ -16,8 +18,8 @@ foreach test_name : project_tests
     )
     test_exe = executable(test_name, src,
                           include_directories : inc_dir,
-                          c_args : cflags,
+                          c_args : test_cflags,
                           dependencies : [ zbd_lib, dependency('glib-2.0') ],
-                          install: false)
+                          install: true)
     test(test_name, test_exe)
 endforeach

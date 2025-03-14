@@ -229,3 +229,21 @@ zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buf
 
     return data;
 }
+
+int
+zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id, unsigned char *compare_buffer) {
+    uint32_t read_id;
+    memcpy(&read_id, data, sizeof(uint32_t));
+    if (read_id != id) {
+        dbg_printf("Invalid read_id(%u)!=id(%u)\n", read_id, id);
+        return -1;
+    }
+    // 4 bytes for int
+    for (uint32_t i = sizeof(uint32_t); i < cache->chunk_sz; i++) {
+        if (data[i] != compare_buffer[i]) {
+            dbg_printf("data[%d]!=RANDOM_DATA[%d]\n", read_id, id);
+            return -1;
+        }
+    }
+    return 0;
+}

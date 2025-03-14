@@ -149,5 +149,16 @@ zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write
 unsigned char *
 zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buffer);
 
+/**
+ * Validate contents of cache read
+ *
+ * @param cache Pointer to the `zn_cache` structure.
+ * @param data Data to validate against RANDOM_DATA
+ * @param id Identifier that should be in first 4 bytes
+ * @return Non-zero on error
+ */
+int
+zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id, unsigned char *compare_buffer);
+
 
 #endif // ZNCACHE_H
