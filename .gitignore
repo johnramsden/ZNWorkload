@@ -2,3 +2,4 @@
 buildDir
 vendor/lib
 docs
+logs

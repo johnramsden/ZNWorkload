@@ -3,6 +3,7 @@
 echo "Device: $1"
 echo "Workload Directory: $2"
 echo "Threads: $3"
+echo "Logging to: ./logs"
 
 # Specify the directory (use . for the current directory)
 directory="$2"
@@ -28,7 +29,7 @@ for file in "$directory"/*; do
         declare -g "$key"="$value"
     done
 
-    runfile="$file""-"$(date '+%Y-%m-%d_%H:%M:%S')"-run"
+    runfile="./logs/$filename""-"$(date '+%Y-%m-%d_%H:%M:%S')"-run"
     # Now you can access the variables
     {
         echo "Chunk Size: $chunk_size"
@@ -39,6 +40,8 @@ for file in "$directory"/*; do
         echo "Number of Zones: $num_zones"
         echo "Total Chunks: $total_chunks"
     } >> "$runfile"
+
+    echo > "$runfile"
 
     # shellcheck disable=SC2024
     if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" "$file" "$iterations" >> "$runfile"; then
