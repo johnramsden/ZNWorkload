@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 echo "Device: $1"
 echo "Workload Directory: $2"
@@ -35,7 +35,8 @@ for file in "$directory"/*; do
 		echo "Number of Zones: $num_zones" >> runfile
 		echo "Total Chunks: $total_chunks" >> runfile
 
-		sudo ./buildDir/src/zncache $1 $chunk_size $3 $file $iterations >> runfile
+		# shellcheck disable=SC2024
+		sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" "$file" "$iterations" >> "$runfile"
 
     fi
 done

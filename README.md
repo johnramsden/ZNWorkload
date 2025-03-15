@@ -59,6 +59,10 @@ To destroy:
 ./scripts/nullblk-zoned-delete.sh 0 # Replace 0 with ID if different
 ```
 
+# Workloads
+
+For detailed experiment reproduction, see [WORKLOADS](WORKLOADS.md)
+
 ### Min-workload
 
 For mini-test:
