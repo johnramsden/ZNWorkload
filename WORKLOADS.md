@@ -81,5 +81,5 @@ nvme1n1      none
 Run simple:
 
 ```shell
-
+sudo ./zncache /dev/nvme0n2 5242880 1
 ```
