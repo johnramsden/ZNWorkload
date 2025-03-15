@@ -20,7 +20,6 @@
 static int
 close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     if (zone->state == ZN_ZONE_FULL) {
-        dbg_printf("Zone already closed\n");
         return 0;
     }
 
@@ -67,7 +66,7 @@ close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 static int
 reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     if (zone->state == ZN_ZONE_FREE) {
-        dbg_printf("Zone already closed\n");
+        dbg_printf("Zone %u already closed\n", zone->zone_id);
         return 0;
     }
 
@@ -109,7 +108,6 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     assert(zone->state == ZN_ZONE_FREE);
 
     if (g_queue_get_length(state->active) + state->writes_occurring >= state->max_nr_active_zones) {
-        dbg_printf("Already at active zone limit\n");
         return -1;
     }
 
@@ -227,12 +225,13 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     return ZSM_GET_ACTIVE_ZONE_SUCCESS;
 }
 
+#ifdef TODO
 // TODO
 GArray
 zsm_get_active_zone_batch(int chunks) {
     (void) chunks;
-    return (GArray) {};
 }
+#endif
 
 int
 zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
@@ -253,7 +252,7 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     if (zone->chunk_offset == state->max_zone_chunks) {
         int ret = close_zone(state, zone);
         if (ret != 0) {
-            dbg_printf("An error occurred while closing the zone\n");
+            dbg_printf("An error occurred while closing zone %u\n", zone->zone_id);
             g_mutex_unlock(&state->state_mutex);
             return ret;
         }

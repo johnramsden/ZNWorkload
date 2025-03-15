@@ -19,7 +19,7 @@ zn_policy_promotional_update(policy_data_t _policy, struct zn_pair location,
 
     gpointer zone_ptr = GUINT_TO_POINTER(location.zone);
 
-    dbg_printf("State before promotional update\n");
+    dbg_printf("State before promotional update%s", "\n");
 
     dbg_print_g_queue("lru_queue", &policy->lru_queue, PRINT_G_QUEUE_GINT);
     dbg_print_g_hash_table("zone_to_lru_map", policy->zone_to_lru_map, PRINT_G_HASH_TABLE_PROM_LRU_NODE);
@@ -44,7 +44,7 @@ zn_policy_promotional_update(policy_data_t _policy, struct zn_pair location,
         // anything
     }
 
-    dbg_printf("State after promotional update\n");
+    dbg_printf("State after promotional update%s", "\n");
     dbg_print_g_queue("lru_queue", &policy->lru_queue, PRINT_G_QUEUE_GINT);
     dbg_print_g_hash_table("zone_to_lru_map", policy->zone_to_lru_map, PRINT_G_HASH_TABLE_PROM_LRU_NODE);
 

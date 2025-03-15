@@ -20,7 +20,7 @@ zn_fg_evict(struct zn_cache *cache) {
             int zone =
                 cache->eviction_policy.do_evict(cache->eviction_policy.data);
             if (zone == -1) {
-                dbg_printf("No zones to evict\n");
+                dbg_printf("No zones to evict%s", "\n");
                 break;
             }
 
@@ -205,7 +205,7 @@ zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write
         // wp_start+total_written);
         if ((bytes_written == -1) || (errno != 0)) {
             dbg_printf("Error: %s\n", strerror(errno));
-            dbg_printf("Couldn't write to fd\n");
+            dbg_printf("Couldn't write to fd=%d\n", fd);
             return -1;
         }
         total_written += bytes_written;

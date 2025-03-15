@@ -49,17 +49,6 @@ struct zn_thread_data {
     bool done;              /**< Marks completed */
 };
 
-[[maybe_unused]] static void
-zn_print_cache(struct zn_cache *cache) {
-    (void) cache;
-#ifdef DEBUG
-    printf("\tchunk_sz=%lu\n", cache->chunk_sz);
-    printf("\tnr_zones=%u\n", cache->nr_zones);
-    printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
-    printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
-#endif
-}
-
 /**
  * Eviction thread
  *
@@ -102,7 +91,6 @@ task_function(gpointer data, gpointer user_data) {
     struct zn_thread_data *thread_data = data;
 
     printf("Task %d started by thread %p\n", thread_data->tid, (void *) g_thread_self());
-    // zn_print_cache(thread_data->cache);
 
     // Handles any cache read requests
     while (true) {
@@ -131,7 +119,7 @@ task_function(gpointer data, gpointer user_data) {
         // Find the data in the cache
         unsigned char *data = zn_cache_get(thread_data->cache, data_id, RANDOM_DATA);
         if (data == NULL) {
-            dbg_printf("ERROR: Couldn't get data\n");
+            dbg_printf("ERROR: Couldn't get data for data_id=%u\n", data_id);
             return;
         }
 #ifdef VERIFY
@@ -197,7 +185,8 @@ main(int argc, char **argv) {
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n"
            "\tWorkload file: %s\n",           
-           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz,
+           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");

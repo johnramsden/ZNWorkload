@@ -2,7 +2,7 @@ project('ZNWorkload', 'c',
         version : '1.0.0',
         default_options : [
             'warning_level=3',
-            'c_std=c2x',
+            'c_std=c17',
             # To test ASAN
             #                'b_sanitize=address'
         ])
