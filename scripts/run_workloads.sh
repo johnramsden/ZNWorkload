@@ -44,8 +44,11 @@ for file in "$directory"/*; do
     echo > "$runfile"
 
     # shellcheck disable=SC2024
+    echo "Running $runfile"
     if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" "$file" "$iterations" >> "$runfile"; then
         echo "Run FAILED!"
+    else
+        tail -n3 "$runfile"
     fi
 done
 
