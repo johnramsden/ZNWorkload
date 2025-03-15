@@ -16,3 +16,11 @@ final int zone_size = 1024 * 1024;
 final int num_zones = 28;
 final int iterations = 1500;
 ```
+
+To run all workloads, run (replacing $DEVICE and $NUM_THREADS):
+
+```shell
+sudo ./scripts/run_workloads.sh $DEVICE $NUM_THREADS vendor/workloadgen/core/target/workloads
+```
+
+Output will be in `$FILE-$DATE-run` files
