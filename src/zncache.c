@@ -136,7 +136,7 @@ int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    if (argc < 4 || argc > 5) {
+    if (argc < 4 || argc > 6) {
         fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [workload] [iterations]\n", argv[0]);
         return -1;
     }

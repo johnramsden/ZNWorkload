@@ -27,13 +27,13 @@ for file in "$directory"/*; do
 
 		runfile="$file""-"$(date '+%Y-%m-%d_%H:%M:%S')"-run"
 		# Now you can access the variables
-		echo "Chunk Size: $chunk_size" >> runfile
-		echo "Distribution Type: $distributionType" >> runfile
-		echo "Working Set Ratio: $working_set_ratio" >> runfile
-		echo "Zone Size: $zone_size" >> runfile
-		echo "Iterations: $iterations" >> runfile
-		echo "Number of Zones: $num_zones" >> runfile
-		echo "Total Chunks: $total_chunks" >> runfile
+		echo "Chunk Size: $chunk_size" >> $runfile
+		echo "Distribution Type: $distributionType" >> $runfile
+		echo "Working Set Ratio: $working_set_ratio" >> $runfile
+		echo "Zone Size: $zone_size" >> $runfile
+		echo "Iterations: $iterations" >> $runfile
+		echo "Number of Zones: $num_zones" >> $runfile
+		echo "Total Chunks: $total_chunks" >> $runfile
 
 		# shellcheck disable=SC2024
 		sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" "$file" "$iterations" >> "$runfile"
