@@ -9,6 +9,7 @@ foreach test_name : project_tests
         meson.project_source_root() + '/src/cache.c',
         meson.project_source_root() + '/src/znutil.c',
         meson.project_source_root() + '/src/cachemap.c',
+        meson.project_source_root() + '/src/profiling.c',
         meson.project_source_root() + '/src/zone_state_manager.c',
         meson.project_source_root() + '/src/eviction_policy.c',
         meson.project_source_root() + '/src/minheap.c',

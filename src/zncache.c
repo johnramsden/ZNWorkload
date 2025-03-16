@@ -10,9 +10,10 @@
 #include "zone_state_manager.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <glib.h>
-#include <inttypes.h>
+#include <getopt.h>
 #include <linux/fs.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -132,48 +133,101 @@ task_function(gpointer data, gpointer user_data) {
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
 }
 
+static void
+usage(FILE * file, char *progname) {
+    fprintf(file,
+            "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [-w workload_file] [-i iterations] [-m metrics_file ] [ -h]\n",
+            progname);
+}
+
 int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
-
-    if (argc < 4 || argc > 6) {
-        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [workload] [iterations]\n", argv[0]);
-        return -1;
-    }
 
     if (geteuid() != 0) {
         fprintf(stderr, "Please run as root\n");
         return -1;
     }
 
+    if (argc < 4 || argc > 11) {
+        usage(stderr, argv[0]);
+        return -1;
+    }
+
     char *device = argv[1];
-    enum zn_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
+
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
 
+    char *metrics_file = NULL;
+    char *workload_file = NULL;
+    uint64_t workload_max = UINT64_MAX;
     uint32_t *workload_buffer;
-    uint64_t workload_max;
-    if (argc == 5) {
+    int c;
+    opterr = 0;
+    while ((c = getopt(argc, argv, "w:i:m:h")) != -1) {
+        switch (c) {
+            case 'w':
+                workload_file = optarg;
+            break;
+            case 'i':
+                workload_max = strtol(optarg, NULL, 10);
+            break;
+            case 'm':
+                metrics_file = optarg;
+            break;
+            case 'h':
+                usage(stdout, argv[0]);
+                exit(EXIT_SUCCESS);
+            break;
+            case '?':
+                if (isprint(optopt)) {
+                    fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                } else {
+                    fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+                }
+                usage(stderr, argv[0]);
+                return -1;
+            default:
+                usage(stderr, argv[0]);
+                exit(-1);
+        }
+    }
 
-        printf("Attempting to read %s\n", argv[4]);
-        int workload_fd = open(argv[4], O_RDONLY);
+    enum zn_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
+
+    if (workload_file != NULL) {
+        if (workload_max == UINT64_MAX) {
+            fprintf(stderr, "'iterations' must be set if 'workload_file' is set\n");
+            return 1;
+        }
+        int workload_fd = open(workload_file, O_RDONLY);
         if (workload_fd == -1) {
-            printf("Couldn't read workload file\n");
+            fprintf(stderr, "Couldn't read workload file %s\n", workload_file);
             return 1;
         }
 
-        workload_max = strtol(argv[5], NULL, 10);
-        workload_buffer = malloc(workload_max * sizeof(uint32_t));
+        size_t workload_sz = workload_max * sizeof(uint32_t);
+
+        workload_buffer = malloc(workload_sz);
 
         assert(workload_max <= _POSIX_SSIZE_MAX && "Can't be greater than this number");
-        if (read(workload_fd, workload_buffer, workload_max * sizeof(uint32_t)) != (ssize_t)workload_max) {
-            printf("Couldn't read all of the workload file\n");
+        errno = 0;
+        ssize_t bytes_read = read(workload_fd, workload_buffer, workload_sz);
+        if (bytes_read != workload_sz) {
+            if (errno != 0) {
+                fprintf(stderr, "Couldn't read the workload file: '%s'\n", strerror(errno));
+            } else {
+                fprintf(stderr,
+                    "Couldn't read the workload file, iteration number %ld too large, read %ld bytes out of %ld\n",
+                    workload_max,  bytes_read, workload_sz);
+            }
+
             return 1;
         }
-
     } else {
-        workload_max = sizeof(simple_workload);
+        workload_max = sizeof(simple_workload) / sizeof(uint32_t);
         workload_buffer = simple_workload;
     }
 
@@ -186,7 +240,7 @@ main(int argc, char **argv) {
            "\tEviction threads: %u\n"
            "\tWorkload file: %s\n",           
            device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz,
-           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
+           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, workload_file != NULL ? workload_file : "Simple generator");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");

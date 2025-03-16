@@ -9,8 +9,25 @@ echo "Logging to: ./logs"
 directory="$2"
 threads="$3"
 
+usage() {
+    printf "Usage: %s DEVICE WORKLOAD_DIR NR_THREADS\n" "$(basename "$0")"
+    exit 1
+}
+
+if [ "$#" -ne 3 ]; then
+    echo "Illegal number of parameters $#, should be 3"
+    usage
+fi
+
+# Check set
+[ -z $1 ] && usage
+[ -z $2 ] && usage
+[ -z $3 ] && usage
+
+ret=0
+
 # Loop through all files in the directory
-for file in "$directory"/*; do
+for file in "$directory"/*.bin; do
     # Check if it's a file (not a directory)
     if ! [ -f "$file" ]; then
         echo "ERROR: no such file '$file', skipping"
@@ -18,7 +35,7 @@ for file in "$directory"/*; do
     fi
     filename=$(basename ${file})
     # Split the filename into an array using comma as the delimiter
-    IFS=, read -ra params <<< "$filename"
+    IFS=, read -ra params <<< "${filename%.*}"
 
     # Iterate over each key-value pair
     for param in "${params[@]}"; do
@@ -45,10 +62,12 @@ for file in "$directory"/*; do
 
     # shellcheck disable=SC2024
     echo "Running $runfile"
-    if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" "$file" "$iterations" >> "$runfile"; then
+    if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" >> "$runfile"; then
         echo "Run FAILED!"
+        ret=1
     else
         tail -n3 "$runfile"
     fi
 done
 
+exit $ret

@@ -29,7 +29,7 @@ To run all workloads, run (replacing $DEVICE and $NUM_THREADS):
 sudo ./scripts/run_workloads.sh $DEVICE vendor/workloadgen/core/target/workloads $NUM_THREADS
 ```
 
-Output will be in `$FILE-$DATE-run` files
+Output will be in `./logs/$FILE-$DATE-run` files
 
 ## Cortes
 
