@@ -4,6 +4,7 @@
 
 #include "znutil.h"
 #include "zncache.h"
+#include "znprofiler.h"
 
 
 #include <assert.h>
@@ -110,7 +111,8 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
 void
 zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
-              int fd, enum zn_evict_policy_type policy, enum zn_backend backend, uint32_t* workload_buffer, uint64_t workload_max) {
+              int fd, enum zn_evict_policy_type policy, enum zn_backend backend, uint32_t* workload_buffer,
+              uint64_t workload_max, char *metrics_file) {
     cache->fd = fd;
     cache->chunk_sz = chunk_sz;
     cache->nr_zones = info->nr_zones;
@@ -123,6 +125,8 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
     cache->reader.workload_buffer = workload_buffer;
     cache->reader.workload_max = workload_max;
+
+
 
 #ifdef DEBUG
     printf("Initialized cache:\n");
@@ -139,6 +143,11 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 
+    if (metrics_file != NULL) {
+        cache->profiler = zn_profiler_init(metrics_file);
+        assert(cache->profiler != NULL);
+    }
+
     g_mutex_init(&cache->reader.lock);
     cache->reader.workload_index = 0;
 
@@ -148,6 +157,9 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 void
 zn_destroy_cache(struct zn_cache *cache) {
     (void) cache;
+    if (cache->profiler != NULL) {
+        zn_profiler_close(cache->profiler);
+    }
 
     // TODO assert(!"Todo: clean up cache");
 

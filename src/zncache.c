@@ -215,7 +215,7 @@ main(int argc, char **argv) {
         assert(workload_max <= _POSIX_SSIZE_MAX && "Can't be greater than this number");
         errno = 0;
         ssize_t bytes_read = read(workload_fd, workload_buffer, workload_sz);
-        if (bytes_read != workload_sz) {
+        if ((size_t)bytes_read != workload_sz) {
             if (errno != 0) {
                 fprintf(stderr, "Couldn't read the workload file: '%s'\n", strerror(errno));
             } else {
@@ -238,9 +238,12 @@ main(int argc, char **argv) {
            "\tBLOCK_ZONE_CAPACITY: %u\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n"
-           "\tWorkload file: %s\n",           
+           "\tWorkload file: %s\n"
+           "\tMetrics file: %s\n",
            device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz,
-           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, workload_file != NULL ? workload_file : "Simple generator");
+           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads,
+           workload_file != NULL ? workload_file : "Simple generator",
+           metrics_file != NULL ? metrics_file : "NO");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -297,7 +300,7 @@ main(int argc, char **argv) {
     }
 
     struct zn_cache cache = {0};
-    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max);
+    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max, metrics_file);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
