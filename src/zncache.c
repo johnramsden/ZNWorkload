@@ -47,8 +47,13 @@ unsigned char *RANDOM_DATA = NULL;
 struct zn_thread_data {
     struct zn_cache *cache; /**< Pointer to the cache instance associated with this thread. */
     uint32_t tid;           /**< Unique identifier for the thread. */
-    bool done;              /**< Marks completed */
+    bool *done;              /**< Marks completed */
+    uint32_t nr_threads;    /**< Total threads */
+    uint32_t *nr_threads_completed;    /**< Total threads done */
+    GMainLoop *loop;        /**< Main loop */
+    GMutex *thread_counter_lock;
 };
+
 
 /**
  * Eviction thread
@@ -64,7 +69,7 @@ evict_task(gpointer user_data) {
     printf("Evict task started by thread %p\n", (void *) g_thread_self());
 
     while (true) {
-        if (thread_data->done) {
+        if (*thread_data->done) {
             break;
         }
 
@@ -131,6 +136,14 @@ task_function(gpointer data, gpointer user_data) {
         thread_data->cache->reader.workload_index++;
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
+
+    g_mutex_lock(thread_data->thread_counter_lock);
+    (*thread_data->nr_threads_completed)++;
+    if (*thread_data->nr_threads_completed == thread_data->nr_threads) {
+        g_main_loop_quit(thread_data->loop);
+        *thread_data->done = true;
+    }
+    g_mutex_unlock(thread_data->thread_counter_lock);
 }
 
 static void
@@ -180,7 +193,6 @@ main(int argc, char **argv) {
             case 'h':
                 usage(stdout, argv[0]);
                 exit(EXIT_SUCCESS);
-            break;
             case '?':
                 if (isprint(optopt)) {
                     fprintf(stderr, "Unknown option `-%c'.\n", optopt);
@@ -311,13 +323,27 @@ main(int argc, char **argv) {
     }
 
     struct timespec start_time, end_time;
-    TIME_NOW(&start_time);
 
     // Push tasks to the thread pool
     struct zn_thread_data *thread_data = g_new(struct zn_thread_data, nr_threads);
+    // Setup mainloop to iterate context for profiling triggers
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+
+    GMutex lock;
+    g_mutex_init(&lock);
+    uint32_t nr_threads_completed = 0;
+    bool done = false;
+
+    TIME_NOW(&start_time);
     for (int i = 0; i < nr_threads; i++) {
         thread_data[i].tid = i;
         thread_data[i].cache = &cache;
+        thread_data[i].nr_threads = nr_threads;
+        thread_data[i].nr_threads_completed = &nr_threads_completed;
+        thread_data[i].thread_counter_lock = &lock;
+        thread_data[i].loop = loop;
+        thread_data[i].done = &done;
+
         g_thread_pool_push(pool, &thread_data[i], &error);
         if (error) {
             fprintf(stderr, "Error pushing task: %s\n", error->message);
@@ -326,15 +352,14 @@ main(int argc, char **argv) {
     }
 
     // Setup eviction thread
-    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
+    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = &done};
 
     GThread *thread = g_thread_new("evict-thread", evict_task, &eviction_thread_data);
 
+    g_main_loop_run(thread_data->loop);
+
     // Wait for tasks to finish and free the thread pool
     g_thread_pool_free(pool, FALSE, TRUE);
-
-    // Notify GC thread we are done
-    eviction_thread_data.done = true;
 
     g_thread_join(thread);
 
@@ -344,6 +369,7 @@ main(int argc, char **argv) {
                TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
+    g_main_loop_unref(loop);
     zn_destroy_cache(&cache);
     g_free(thread_data);
     free(RANDOM_DATA);
