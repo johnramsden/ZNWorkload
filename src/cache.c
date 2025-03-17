@@ -126,8 +126,6 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->reader.workload_buffer = workload_buffer;
     cache->reader.workload_max = workload_max;
 
-
-
 #ifdef DEBUG
     printf("Initialized cache:\n");
     printf("\tchunk_sz=%lu\n", cache->chunk_sz);
@@ -143,6 +141,7 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 
+    cache->profiler = NULL;
     if (metrics_file != NULL) {
         cache->profiler = zn_profiler_init(metrics_file);
         assert(cache->profiler != NULL);

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "zncache.h"
 
+#include "znprofiler.h"
 #include "eviction_policy.h"
 #include "libzbd/zbd.h"
 #include "znutil.h"
@@ -123,11 +124,18 @@ task_function(gpointer data, gpointer user_data) {
 		data_id = thread_data->cache->reader.workload_buffer[wi];
 
         // Find the data in the cache
+        // PROFILE START
+        struct timespec start_time, end_time;
+        TIME_NOW(&start_time);
         unsigned char *data = zn_cache_get(thread_data->cache, data_id, RANDOM_DATA);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data for data_id=%u\n", data_id);
             return;
         }
+        TIME_NOW(&end_time);
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_GET_LATENCY, TIME_DIFFERENCE_NSEC(start_time, end_time));
+        // PROFILE END
+
 #ifdef VERIFY
         assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
@@ -144,6 +152,22 @@ task_function(gpointer data, gpointer user_data) {
         *thread_data->done = true;
     }
     g_mutex_unlock(thread_data->thread_counter_lock);
+}
+
+/**
+ * Profiling task triggerred periodically
+ *
+ * @param user_data Profiler
+ * @return TRUE
+ */
+static gboolean
+profiling_task(gpointer user_data) {
+    struct zn_profiler *zp = user_data;
+
+    zn_profiler_write_all_and_reset(zp);
+
+    // Return TRUE to keep firing
+    return TRUE;
 }
 
 static void
@@ -328,6 +352,10 @@ main(int argc, char **argv) {
     struct zn_thread_data *thread_data = g_new(struct zn_thread_data, nr_threads);
     // Setup mainloop to iterate context for profiling triggers
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+
+    if (cache.profiler != NULL && !cache.profiler->realtime) {
+        g_timeout_add_seconds(PROFILING_INTERVAL_SEC, profiling_task, cache.profiler);
+    }
 
     GMutex lock;
     g_mutex_init(&lock);
