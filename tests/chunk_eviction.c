@@ -75,7 +75,7 @@ setup_dev(char *device, struct zn_cache *cfg) {
 
 	zn_init_cache(cfg, &info, CHUNK_SIZE, zone_capacity,
               fd, ZN_EVICT_CHUNK, backend, workload,
-              WORKLOAD_SZ);
+              WORKLOAD_SZ, NULL);
 
     return 0;
 }
