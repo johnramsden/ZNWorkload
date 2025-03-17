@@ -74,7 +74,7 @@ zn_profiler_write_all_and_reset(struct zn_profiler *zp) {
 }
 
 void
-zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, uint32_t value) {
+zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, double value) {
     g_mutex_lock(&zp->lock);
     zp->metrics[metric].value+=value;
     zp->metrics[metric].count++;

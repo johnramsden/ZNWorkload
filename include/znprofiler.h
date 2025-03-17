@@ -76,7 +76,7 @@ zn_profiler_write_all_and_reset(struct zn_profiler *zp);
  * @param[in]     value   The amount to add to the metric's current total.
  */
 void
-zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, uint32_t value);
+zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, double value);
 
 /**
 * Calls zn_profiler_update_metric if zp not NULL
