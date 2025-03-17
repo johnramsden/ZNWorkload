@@ -4,6 +4,7 @@
 #include <string.h>
 #include "zncache.h"
 
+#include "znprofiler.h"
 #include "eviction_policy.h"
 #include "libzbd/zbd.h"
 #include "znutil.h"
@@ -47,8 +48,13 @@ unsigned char *RANDOM_DATA = NULL;
 struct zn_thread_data {
     struct zn_cache *cache; /**< Pointer to the cache instance associated with this thread. */
     uint32_t tid;           /**< Unique identifier for the thread. */
-    bool done;              /**< Marks completed */
+    bool *done;              /**< Marks completed */
+    uint32_t nr_threads;    /**< Total threads */
+    uint32_t *nr_threads_completed;    /**< Total threads done */
+    GMainLoop *loop;        /**< Main loop */
+    GMutex *thread_counter_lock;
 };
+
 
 /**
  * Eviction thread
@@ -64,7 +70,7 @@ evict_task(gpointer user_data) {
     printf("Evict task started by thread %p\n", (void *) g_thread_self());
 
     while (true) {
-        if (thread_data->done) {
+        if (*thread_data->done) {
             break;
         }
 
@@ -118,11 +124,18 @@ task_function(gpointer data, gpointer user_data) {
 		data_id = thread_data->cache->reader.workload_buffer[wi];
 
         // Find the data in the cache
+        // PROFILE START
+        struct timespec start_time, end_time;
+        TIME_NOW(&start_time);
         unsigned char *data = zn_cache_get(thread_data->cache, data_id, RANDOM_DATA);
         if (data == NULL) {
             dbg_printf("ERROR: Couldn't get data for data_id=%u\n", data_id);
             return;
         }
+        TIME_NOW(&end_time);
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_GET_LATENCY, TIME_DIFFERENCE_NSEC(start_time, end_time));
+        // PROFILE END
+
 #ifdef VERIFY
         assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
@@ -131,6 +144,30 @@ task_function(gpointer data, gpointer user_data) {
         thread_data->cache->reader.workload_index++;
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
+
+    g_mutex_lock(thread_data->thread_counter_lock);
+    (*thread_data->nr_threads_completed)++;
+    if (*thread_data->nr_threads_completed == thread_data->nr_threads) {
+        g_main_loop_quit(thread_data->loop);
+        *thread_data->done = true;
+    }
+    g_mutex_unlock(thread_data->thread_counter_lock);
+}
+
+/**
+ * Profiling task triggerred periodically
+ *
+ * @param user_data Profiler
+ * @return TRUE
+ */
+static gboolean
+profiling_task(gpointer user_data) {
+    struct zn_profiler *zp = user_data;
+
+    zn_profiler_write_all_and_reset(zp);
+
+    // Return TRUE to keep firing
+    return TRUE;
 }
 
 static void
@@ -180,7 +217,6 @@ main(int argc, char **argv) {
             case 'h':
                 usage(stdout, argv[0]);
                 exit(EXIT_SUCCESS);
-            break;
             case '?':
                 if (isprint(optopt)) {
                     fprintf(stderr, "Unknown option `-%c'.\n", optopt);
@@ -215,7 +251,7 @@ main(int argc, char **argv) {
         assert(workload_max <= _POSIX_SSIZE_MAX && "Can't be greater than this number");
         errno = 0;
         ssize_t bytes_read = read(workload_fd, workload_buffer, workload_sz);
-        if (bytes_read != workload_sz) {
+        if ((size_t)bytes_read != workload_sz) {
             if (errno != 0) {
                 fprintf(stderr, "Couldn't read the workload file: '%s'\n", strerror(errno));
             } else {
@@ -238,9 +274,12 @@ main(int argc, char **argv) {
            "\tBLOCK_ZONE_CAPACITY: %u\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n"
-           "\tWorkload file: %s\n",           
+           "\tWorkload file: %s\n"
+           "\tMetrics file: %s\n",
            device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz,
-           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, workload_file != NULL ? workload_file : "Simple generator");
+           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads,
+           workload_file != NULL ? workload_file : "Simple generator",
+           metrics_file != NULL ? metrics_file : "NO");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -297,7 +336,7 @@ main(int argc, char **argv) {
     }
 
     struct zn_cache cache = {0};
-    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max);
+    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max, metrics_file);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
@@ -308,13 +347,31 @@ main(int argc, char **argv) {
     }
 
     struct timespec start_time, end_time;
-    TIME_NOW(&start_time);
 
     // Push tasks to the thread pool
     struct zn_thread_data *thread_data = g_new(struct zn_thread_data, nr_threads);
+    // Setup mainloop to iterate context for profiling triggers
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+
+    if (cache.profiler != NULL && !cache.profiler->realtime) {
+        g_timeout_add_seconds(PROFILING_INTERVAL_SEC, profiling_task, cache.profiler);
+    }
+
+    GMutex lock;
+    g_mutex_init(&lock);
+    uint32_t nr_threads_completed = 0;
+    bool done = false;
+
+    TIME_NOW(&start_time);
     for (int i = 0; i < nr_threads; i++) {
         thread_data[i].tid = i;
         thread_data[i].cache = &cache;
+        thread_data[i].nr_threads = nr_threads;
+        thread_data[i].nr_threads_completed = &nr_threads_completed;
+        thread_data[i].thread_counter_lock = &lock;
+        thread_data[i].loop = loop;
+        thread_data[i].done = &done;
+
         g_thread_pool_push(pool, &thread_data[i], &error);
         if (error) {
             fprintf(stderr, "Error pushing task: %s\n", error->message);
@@ -323,15 +380,14 @@ main(int argc, char **argv) {
     }
 
     // Setup eviction thread
-    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
+    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = &done};
 
     GThread *thread = g_thread_new("evict-thread", evict_task, &eviction_thread_data);
 
+    g_main_loop_run(thread_data->loop);
+
     // Wait for tasks to finish and free the thread pool
     g_thread_pool_free(pool, FALSE, TRUE);
-
-    // Notify GC thread we are done
-    eviction_thread_data.done = true;
 
     g_thread_join(thread);
 
@@ -341,6 +397,7 @@ main(int argc, char **argv) {
                TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
+    g_main_loop_unref(loop);
     zn_destroy_cache(&cache);
     g_free(thread_data);
     free(RANDOM_DATA);

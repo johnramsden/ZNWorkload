@@ -6,7 +6,7 @@ srcs = files(
     'cache.c',
     'znutil.c',
     'cachemap.c',
-    'profiling.c',
+    'znprofiler.c',
     'zone_state_manager.c',
     'eviction_policy.c',
     'minheap.c',
