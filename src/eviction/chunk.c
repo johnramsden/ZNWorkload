@@ -113,7 +113,7 @@ zn_policy_chunk_gc(policy_data_t policy) {
             assert(data);
 
             // Write the chunk to the new zone
-            unsigned long long wp = CHUNK_POINTER(p->cache->zone_cap, p->cache->chunk_sz,
+            unsigned long long wp = CHUNK_POINTER(p->cache->zone_size, p->cache->chunk_sz,
                                                   new_location.chunk_offset, new_location.zone);
             if (zn_write_out(p->cache->fd, p->cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
                 assert(!"Failed to write chunk to new zone");

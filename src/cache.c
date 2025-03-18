@@ -85,9 +85,9 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
         // Write buffer to disk, 4kb blocks at a time
         unsigned long long wp =
-            CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, location.chunk_offset, location.zone);
+            CHUNK_POINTER(cache->zone_size, cache->chunk_sz, location.chunk_offset, location.zone);
         if (zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
-            dbg_printf("Couldn't write to fd at wp=%llu\n", wp);
+            dbg_printf("Couldn't write to fd at wp=%llu, zone=%u, chunk=%u\n", wp, location.chunk_offset, location.zone);
             goto UNDO_ZONE_GET;
         }
 
@@ -120,6 +120,7 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     cache->max_nr_active_zones =
         info->max_nr_active_zones == 0 ? MAX_OPEN_ZONES : info->max_nr_active_zones;
     cache->zone_cap = zone_cap;
+    cache->zone_size = info->zone_size;
     cache->max_zone_chunks = zone_cap / chunk_sz;
     cache->backend = backend;
     cache->active_readers = malloc(sizeof(gint) * cache->nr_zones);
@@ -138,7 +139,7 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     // Set up the data structures
     zn_cachemap_init(&cache->cache_map, cache->nr_zones, cache->active_readers);
     zn_evict_policy_init(&cache->eviction_policy, policy, cache);
-    zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, chunk_sz,
+    zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, cache->zone_size, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
 
     cache->profiler = NULL;
@@ -187,7 +188,7 @@ zn_read_from_disk(struct zn_cache *cache, struct zn_pair *zone_pair) {
     }
 
     unsigned long long wp =
-        CHUNK_POINTER(cache->zone_cap, cache->chunk_sz, zone_pair->chunk_offset, zone_pair->zone);
+        CHUNK_POINTER(cache->zone_size, cache->chunk_sz, zone_pair->chunk_offset, zone_pair->zone);
 
     dbg_printf("[%u,%u] read from write pointer: %llu\n", zone_pair->zone, zone_pair->chunk_offset,
                wp);

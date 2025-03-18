@@ -23,7 +23,7 @@ close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
         return 0;
     }
 
-    unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+    unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
     dbg_printf("Closing zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
@@ -70,7 +70,7 @@ reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
         return 0;
     }
 
-    unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+    unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
     dbg_printf("Resetting zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
@@ -83,7 +83,7 @@ reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 			return ret;
 		}
     }
-    
+
     zone->state = ZN_ZONE_FREE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->free, zone);
@@ -112,7 +112,8 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     }
 
 	if (state->backend_type == ZE_BACKEND_ZNS) {
-		unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+        dbg_printf("chunk_offset=%u, zone=%u\n", zone->chunk_offset, zone->zone_id);
+		unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
 		dbg_printf("Opening zone %u, zone pointer %llu\n", zone->zone_id, wp);
 
 		int ret = zbd_open_zones(state->fd, wp, 1);
@@ -120,7 +121,7 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 			return ret;
 		}
     }
-    
+
     zone->state = ZN_ZONE_ACTIVE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->active, zone);
@@ -130,12 +131,13 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
-         const uint64_t zone_cap, const size_t chunk_size,
+         const uint64_t zone_cap, const uint64_t zone_size, const size_t chunk_size,
          const uint32_t max_nr_active_zones,
          const enum zn_backend backend_type) {
     assert(state);
     state->fd = fd;
     state->zone_cap = zone_cap;
+    state->zone_size = zone_size;
     state->chunk_size = chunk_size;
     state->max_zone_chunks = zone_cap / chunk_size;
     state->max_nr_active_zones = max_nr_active_zones;
