@@ -328,6 +328,7 @@ main(int argc, char **argv) {
         }
     } else {
         zone_capacity = BLOCK_ZONE_CAPACITY;
+        info.zone_size = BLOCK_ZONE_CAPACITY;
     }
 
     RANDOM_DATA = generate_random_buffer(chunk_sz);
