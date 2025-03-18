@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug zncache on cortes",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/builddir/src/zncache",
+        "args": ["/dev/nvme0n2", "4096", "32"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ],
+        "miDebuggerPath": "/data/john/gdb.sh"
+      }
+    ]
+  }
