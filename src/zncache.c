@@ -147,6 +147,14 @@ task_function(gpointer data, gpointer user_data) {
             ZN_PROFILER_METRIC_CACHE_USED_MIB,
             BYTES_TO_MIB(zn_evict_policy_get_cache_size(&thread_data->cache->eviction_policy))
         );
+        // Update cache hitratio
+        double hr = zn_cache_get_hit_ratio(thread_data->cache);
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_HITRATIO,
+            hr
+        );
+        dbg_printf("Hitratio: %f\n", hr);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
 

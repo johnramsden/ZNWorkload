@@ -32,6 +32,13 @@ struct zn_reader {
     uint32_t* workload_buffer;
     uint64_t workload_max;
 };
+
+struct zn_cache_hitratio {
+    GMutex lock;
+    uint64_t hits;
+    uint64_t misses;
+};
+
 /**
  * @struct zn_cache
  * @brief Represents a cache system that manages data storage in predefined zones.
@@ -55,6 +62,8 @@ struct zn_cache {
     struct zone_state_manager zone_state;
     struct zn_reader reader; /**< Reader structure for tracking workload location. */
     gint *active_readers;    /**< Owning reference of the list of active readers per zone */
+
+    struct zn_cache_hitratio ratio;
 
     struct zn_profiler * profiler; /**< Stores metrics */
 };
@@ -162,5 +171,13 @@ zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buf
 int
 zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id, unsigned char *compare_buffer);
 
+/**
+ * Get the cache hitratio
+ * 
+ * @param cache Pointer to the `zn_cache` structure.
+ * @return Cache hit ratio
+ */
+double
+zn_cache_get_hit_ratio(struct zn_cache * cache);
 
 #endif // ZNCACHE_H

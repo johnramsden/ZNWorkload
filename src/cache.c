@@ -58,6 +58,11 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
         // Sadly, we have to remember to decrement the reader count here
         g_atomic_int_dec_and_test(&cache->active_readers[result.value.location.zone]);
+
+        g_mutex_lock(&cache->ratio.lock);
+        cache->ratio.hits++;
+        g_mutex_unlock(&cache->ratio.lock);
+
         return data;
     } else { // result.type == RESULT_COND
 
@@ -90,6 +95,10 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
             dbg_printf("Couldn't write to fd at wp=%llu, zone=%u, chunk=%u\n", wp, location.chunk_offset, location.zone);
             goto UNDO_ZONE_GET;
         }
+
+        g_mutex_lock(&cache->ratio.lock);
+        cache->ratio.misses++;
+        g_mutex_unlock(&cache->ratio.lock);
 
         // Update metadata
         zsm_return_active_zone(&cache->zone_state, &location);
@@ -141,6 +150,10 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
     zn_evict_policy_init(&cache->eviction_policy, policy, cache);
     zsm_init(&cache->zone_state, cache->nr_zones, fd, zone_cap, cache->zone_size, chunk_sz,
              cache->max_nr_active_zones, cache->backend);
+
+    cache->ratio.hits = 0;
+    cache->ratio.misses = 0;
+    g_mutex_init(&cache->ratio.lock);
 
     cache->profiler = NULL;
     if (metrics_file != NULL) {
@@ -258,4 +271,16 @@ zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id, unsig
         }
     }
     return 0;
+}
+
+double
+zn_cache_get_hit_ratio(struct zn_cache * cache) {
+    g_mutex_lock(&cache->ratio.lock);
+    double num = cache->ratio.hits;
+    double den = cache->ratio.misses + cache->ratio.hits;
+    g_mutex_unlock(&cache->ratio.lock);
+    if (den == 0) {
+        return 0;
+    }
+    return num / den;
 }
