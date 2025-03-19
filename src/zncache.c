@@ -177,6 +177,43 @@ usage(FILE * file, char *progname) {
             progname);
 }
 
+/**
+ * Read an exact workload amount
+ *
+ * @param fd File to read from
+ * @param buffer Buffer to populate
+ * @param size Exact size to read
+ * @return Non-zero on error
+ */
+int
+read_workload(int fd, uint32_t *buffer, size_t size) {
+    size_t total_bytes_read = 0;
+
+    while (total_bytes_read < size) {
+        errno = 0;
+        ssize_t bytes_read = read(fd, buffer + total_bytes_read, size - total_bytes_read);
+        if (bytes_read < 0) {
+            if (errno == EINTR) {
+                // Interrupted
+                continue;
+            }
+            fprintf(stderr, "Couldn't read the file: '%s'\n", strerror(errno));
+            return 1;
+        }
+        if (bytes_read == 0) {
+            break;
+        }
+        total_bytes_read += bytes_read;
+    }
+
+    if (total_bytes_read != size) {
+        fprintf(stderr, "Couldn't read the file fully, read %zu bytes out of %zu\n", total_bytes_read, size);
+        return 1;
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
@@ -247,19 +284,9 @@ main(int argc, char **argv) {
         size_t workload_sz = workload_max * sizeof(uint32_t);
 
         workload_buffer = malloc(workload_sz);
+        assert(workload_buffer != NULL);
 
-        assert(workload_max <= _POSIX_SSIZE_MAX && "Can't be greater than this number");
-        errno = 0;
-        ssize_t bytes_read = read(workload_fd, workload_buffer, workload_sz);
-        if ((size_t)bytes_read != workload_sz) {
-            if (errno != 0) {
-                fprintf(stderr, "Couldn't read the workload file: '%s'\n", strerror(errno));
-            } else {
-                fprintf(stderr,
-                    "Couldn't read the workload file, iteration number %ld too large, read %ld bytes out of %ld\n",
-                    workload_max,  bytes_read, workload_sz);
-            }
-
+        if (read_workload(workload_fd, workload_buffer, workload_sz) != 0) {
             return 1;
         }
     } else {
