@@ -115,7 +115,7 @@ task_function(gpointer data, gpointer user_data) {
 		}
 
 		// Increment the query index
-		uint32_t wi = thread_data->cache->reader.workload_index;
+		uint32_t wi = thread_data->cache->reader.workload_index++;
 		g_mutex_unlock(&thread_data->cache->reader.lock);
 
         printf("[%d]: ze_cache_get(workload[%d]=%d)\n", thread_data->tid, wi,
@@ -140,8 +140,6 @@ task_function(gpointer data, gpointer user_data) {
         assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
         free(data);
-
-        thread_data->cache->reader.workload_index++;
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
 
