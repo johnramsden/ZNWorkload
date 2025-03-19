@@ -53,7 +53,7 @@ for file in "$directory"/*.bin; do
     # Now you can access the variables
     {
         echo "Chunk Size: $chunk_size"
-        echo "Chunk Size: latency"
+        echo "Latency: $latency"
         echo "Distribution Type: $distributionType"
         echo "Working Set Ratio: $working_set_ratio"
         echo "Zone Size: $zone_size"
