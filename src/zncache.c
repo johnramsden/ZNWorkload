@@ -426,7 +426,7 @@ main(int argc, char **argv) {
 
     TIME_NOW(&end_time);
 
-    dbg_printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time),
+    printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time),
                TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
