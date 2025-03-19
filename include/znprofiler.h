@@ -6,21 +6,30 @@
 #include <stdbool.h>
 #include <glib.h>
 
-#define METRICS_BUFFER_SIZE (1u << 17)  // 2^17 = 131072
+#define METRICS_BUFFER_SIZE (1u << 12)  // 4096
 #define PROFILING_INTERVAL_SEC 2
-#define PROFILING_HEADERS "METRIC,VALUES..."
+#define PROFILING_HEADERS "METRIC,VALUE"
 
+enum zn_profiler_type {
+    ZN_PROFILER_AVG = 0,
+    ZN_PROFILER_SET = 1
+};
 
 struct zn_profiler_metrics {
     uint32_t count;
     double value;
+    enum zn_profiler_type type;
 };
 
-#define PROFILING_METRICS 1 // Keep in sync with enum and zn_profiler_metric_names
+#define PROFILING_METRICS 2 // Keep in sync with enum, zn_profiler_metric_names, and zn_profiler_metric_types
 enum zn_profiler_tag {
-    ZN_PROFILER_METRIC_GET_LATENCY = 0
+    ZN_PROFILER_METRIC_GET_LATENCY = 0,
+    ZN_PROFILER_METRIC_CACHE_USED_MIB = 1
 };
-extern char *zn_profiler_metric_names[PROFILING_METRICS]; // (in znprofiler.c)
+
+// (in znprofiler.c)
+extern char *zn_profiler_metric_names[PROFILING_METRICS];
+extern enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS];
 
 struct zn_profiler {
     FILE *fp;
@@ -79,12 +88,34 @@ void
 zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, double value);
 
 /**
+ * @brief Sets a metric value
+ *
+ * LOCKED BY CALLEE
+ *
+ * @param[in,out] zp      Pointer to the profiler structure managing the metrics.
+ * @param[in]     metric  Enum identifier of the metric to update.
+ * @param[in]     value   The amount to set to the metric's current value.
+ */
+void
+zn_profiler_set_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, double value);
+
+/**
 * Calls zn_profiler_update_metric if zp not NULL
 */
 #define ZN_PROFILER_UPDATE(zp, metric, value)    \
     do {                                    \
         if ((zp) != NULL) {                \
             zn_profiler_update_metric((zp), (metric), (value));     \
+        }                                   \
+    } while (0)
+
+/**
+* Calls zn_profiler_set_metric if zp not NULL
+*/
+#define ZN_PROFILER_SET(zp, metric, value)    \
+    do {                                    \
+        if ((zp) != NULL) {                \
+            zn_profiler_set_metric((zp), (metric), (value));     \
         }                                   \
     } while (0)
 

@@ -57,6 +57,7 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             data->zone_to_lru_map = g_hash_table_new(g_direct_hash, g_direct_equal);
             assert(data->zone_to_lru_map);
 
+            data->cache = cache;
             data->zone_max_chunks = cache->max_zone_chunks;
 
             assert(data->zone_to_lru_map);
@@ -130,4 +131,26 @@ zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type t
             exit(1);
         }
     }
+}
+
+size_t
+zn_evict_policy_get_cache_size(struct zn_evict_policy *policy) {
+    switch (policy->type) {
+        case ZN_EVICT_PROMOTE_ZONE: {
+            struct zn_policy_promotional *data = policy->data;
+            return g_queue_get_length(&data->lru_queue) * data->cache->zone_cap;
+        }
+
+        case ZN_EVICT_CHUNK: {
+            struct zn_policy_chunk *data = policy->data;
+            return g_queue_get_length(&data->lru_queue) * data->cache->chunk_sz;
+        }
+
+        case ZN_EVICT_ZONE: {
+            fprintf(stderr, "NYI\n");
+            exit(1);
+        }
+    }
+
+    return 0;
 }

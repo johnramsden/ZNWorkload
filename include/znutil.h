@@ -141,4 +141,6 @@ print_zn_pair_list(struct zn_pair *list, uint32_t len);
         ((_end.tv_sec - 1 - (_start.tv_sec)) * 1e9 + _end.tv_nsec + 1e9 - _start.tv_nsec) :        \
         ((_end.tv_sec - (_start.tv_sec)) * 1e9 + _end.tv_nsec - _start.tv_nsec)
 
+#define BYTES_TO_MIB(bytes) ((double)(bytes) / (1024.0 * 1024.0))
+
 #endif // UTIL_H

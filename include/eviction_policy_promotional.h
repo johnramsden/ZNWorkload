@@ -11,6 +11,8 @@ struct zn_policy_promotional {
     GHashTable *zone_to_lru_map; /**< Hash table mapping zones to locations in the LRU queue. */
     GMutex policy_mutex;         /**< LRU lock */
 
+    struct zn_cache *cache; /**< Shared pointer to cache (not owned by policy) */
+
     uint32_t zone_max_chunks; /**< Number of chunks in a zone */
 };
 

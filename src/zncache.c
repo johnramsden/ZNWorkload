@@ -140,6 +140,13 @@ task_function(gpointer data, gpointer user_data) {
         assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
         free(data);
+
+        // Update cache size
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_USED_MIB,
+            BYTES_TO_MIB(zn_evict_policy_get_cache_size(&thread_data->cache->eviction_policy))
+        );
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
 

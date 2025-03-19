@@ -6,7 +6,13 @@
 #include <znutil.h>
 
 char *zn_profiler_metric_names[PROFILING_METRICS] = {
-    "GETLATENCY"
+    "GETLATENCY",
+    "CACHE_USED_MIB",
+};
+
+enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
+    ZN_PROFILER_AVG,
+    ZN_PROFILER_SET
 };
 
 struct zn_profiler *
@@ -34,6 +40,7 @@ zn_profiler_init(const char *filename) {
 
     for (uint32_t i = 0; i < PROFILING_METRICS; i++) {
         zn_profiler_reset_metric(zp, i);
+        zp->metrics[i].type = zn_profiler_metric_types[i];
     }
 
     return zp;
@@ -67,7 +74,11 @@ void
 zn_profiler_write_all_and_reset(struct zn_profiler *zp) {
     for (uint32_t i = 0; i < PROFILING_METRICS; i++) {
         g_mutex_lock(&zp->lock);
-        fprintf(zp->fp, "%s,%f\n", zn_profiler_metric_names[i], zp->metrics[i].value / zp->metrics[i].count);
+        double val = zp->metrics[i].value;
+        if (zp->metrics[i].type == ZN_PROFILER_AVG) {
+            val = zp->metrics[i].value / zp->metrics[i].count;
+        }
+        fprintf(zp->fp, "%s,%f\n", zn_profiler_metric_names[i], val);
         zn_profiler_reset_metric(zp, i);
         g_mutex_unlock(&zp->lock);
     }
@@ -78,6 +89,13 @@ zn_profiler_update_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, d
     g_mutex_lock(&zp->lock);
     zp->metrics[metric].value+=value;
     zp->metrics[metric].count++;
+    g_mutex_unlock(&zp->lock);
+}
+
+void
+zn_profiler_set_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, double value) {
+    g_mutex_lock(&zp->lock);
+    zp->metrics[metric].value = value;
     g_mutex_unlock(&zp->lock);
 }
 
