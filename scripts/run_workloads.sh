@@ -60,9 +60,9 @@ for file in "$directory"/*.bin; do
         echo "Iterations: $iterations"
         echo "Number of Zones: $num_zones"
         echo "Total Chunks: $total_chunks"
-    } >> "$runfile"
+    } > "$runfile"
 
-    echo > "$runfile"
+    echo >> "$runfile"
 
     # shellcheck disable=SC2024
     echo "Running $runfile"
