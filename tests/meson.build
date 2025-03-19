@@ -2,7 +2,10 @@ project_tests = [
     'minheap', 'minheap_concurrent', 'chunk_eviction'
 ]
 
-test_cflags = ['-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string()]
+test_cflags = [
+    '-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string(),
+    '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string()
+]
 
 foreach test_name : project_tests
     src = files(
