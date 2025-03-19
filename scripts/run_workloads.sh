@@ -70,7 +70,7 @@ for file in "$directory"/*.bin; do
     meson setup --reconfigure buildDir -Dverify=false -Ddebugging=false -DREAD_SLEEP_US="$latency" >/dev/null
     meson compile -C buildDir >/dev/null
 
-    if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" >> "$runfile"; then
+    if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"; then
         echo "Run FAILED!"
         ret=1
     else
