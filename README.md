@@ -28,6 +28,7 @@ There are three variables that can be set:
 * `DEBUG`: Enables debug output (default true)
 * `VERIFY`: Enables correctness verification (default true)
 * `BLOCK_ZONE_CAPACITY`: Sets SSD zone size (default 1077MiB 1129316352)
+* `READ_SLEEP_US`: Read delay to simulate remote data (default 1077MiB 1129316352)
 
 To modify these:
 
@@ -61,7 +62,7 @@ To destroy:
 
 # Workloads
 
-For detailed experiment reproduction, see [WORKLOADS](WORKLOADS.md)
+For detailed experiment reproduction, see [WORKLOADS](docs/WORKLOADS.md)
 
 ### Min-workload
 

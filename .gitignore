@@ -1,5 +1,6 @@
 .idea
 buildDir
 vendor/lib
-docs
+docs/html
+docs/latex
 logs
