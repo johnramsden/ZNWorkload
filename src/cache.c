@@ -237,7 +237,7 @@ zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buf
     // Metadata
     memcpy(data, &zone_id, sizeof(uint32_t));
 
-    g_usleep(ZE_READ_SLEEP_US);
+    g_usleep(ZN_READ_SLEEP_US);
 
     return data;
 }

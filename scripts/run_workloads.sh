@@ -1,4 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2154
+
+set -e
 
 echo "Device: $1"
 echo "Workload Directory: $2"
@@ -46,10 +49,11 @@ for file in "$directory"/*.bin; do
         declare -g "$key"="$value"
     done
 
-    runfile="./logs/$filename""-"$(date '+%Y-%m-%d_%H:%M:%S')"-run"
+    runfile="./logs/$filename-$(date '+%Y-%m-%d_%H:%M:%S')-run"
     # Now you can access the variables
     {
         echo "Chunk Size: $chunk_size"
+        echo "Chunk Size: latency"
         echo "Distribution Type: $distributionType"
         echo "Working Set Ratio: $working_set_ratio"
         echo "Zone Size: $zone_size"
@@ -62,6 +66,10 @@ for file in "$directory"/*.bin; do
 
     # shellcheck disable=SC2024
     echo "Running $runfile"
+
+    meson setup --reconfigure buildDir -Dverify=false -Ddebugging=false -DREAD_SLEEP_US="$latency" >/dev/null
+    meson compile -C buildDir >/dev/null
+
     if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" >> "$runfile"; then
         echo "Run FAILED!"
         ret=1
