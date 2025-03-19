@@ -21,11 +21,11 @@ Run
 
 | Metric                | Seconds    | Microseconds |
 |-----------------------|------------|--------------|
-| Mean latency          | 0.0404   | 40430       |
-| Geometric mean latency| 0.0379   | 37901       |
-| Minimum latency       | 0.0290   | 28960       |
-| Maximum latency       | 0.3209   | 320918       |
-| Standard deviation    | 0.0293   | 29260       |
+| Mean latency          | 0.0433   | 43313       |
+| Geometric mean latency| 0.0418   | 41791       |
+| Minimum latency       | 0.0367   | 36655       |
+| Maximum latency       | 0.2537   | 253668       |
+| Standard deviation    | 0.0216   | 21584       |
 
 **chunk size 536870912 bytes:**
 
