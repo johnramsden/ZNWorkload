@@ -117,6 +117,10 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair);
 int
 zsm_evict(struct zone_state_manager *state, int zone_to_free);
 
+// This function evicts the current zone and then allows the thread to write to it. Once the thread is finished writing, it should call zsm_return_active_zone.
+void
+zsm_evict_and_write(struct zone_state_manager *state, uint32_t zone_id, uint32_t count);
+
 void
 zsm_failed_to_write(struct zone_state_manager *state, struct zn_pair pair);
 

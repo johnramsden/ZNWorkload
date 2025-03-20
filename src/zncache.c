@@ -223,7 +223,7 @@ main(int argc, char **argv) {
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n"
            "\tWorkload file: %s\n",           
-           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");

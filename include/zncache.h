@@ -113,6 +113,8 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 void
 zn_destroy_cache(struct zn_cache *cache);
 
+unsigned char * zn_read_from_disk_whole(struct zn_cache *cache, uint32_t zone_id, void *buffer);
+
 /**
  * @brief Read a chunk from disk
  *

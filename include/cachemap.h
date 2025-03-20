@@ -59,6 +59,14 @@ struct zone_map_result {
 struct zone_map_result
 zn_cachemap_find(struct zn_cachemap *map, const uint32_t data_id);
 
+// Apply compaction to a zone. This temporarily renders all zones inactive/unavailable until compaction is finished.
+void
+zn_cachemap_compact_begin(struct zn_cachemap *map, const uint32_t zone_id, uint32_t** data_ids, struct zn_pair** locations, uint32_t* count);
+
+// Finish compaction. 
+void
+zn_cachemap_compact_end(struct zn_cachemap *map, const uint32_t zone_id, const uint32_t* data_ids, struct zn_pair* locations, uint32_t count);
+
 /** @brief Inserts a new mapping into the data structure. Called by
  * the thread when it's finished writing to the zone.
  *

@@ -1,5 +1,7 @@
+#include "cachemap.h"
 #include "eviction_policy.h"
 #include "eviction_policy_chunk.h"
+#include "zncache.h"
 #include "znutil.h"
 #include "minheap.h"
 #include "zone_state_manager.h"
@@ -9,6 +11,7 @@
 #include <stdlib.h>
 #include <glib.h>
 #include <glibconfig.h>
+#include <string.h>
 
 void
 zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
@@ -27,7 +30,7 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
     struct eviction_policy_chunk_zone * zpc = &p->zone_pool[location.zone];
     struct zn_pair * zp = &zpc->chunks[location.chunk_offset];
 
-    GList *node;
+    GList *node = NULL;
     // Should always be present (might be NULL)
     assert(g_hash_table_lookup_extended(p->chunk_to_lru_map, zp, NULL, (gpointer *)&node));
 
@@ -76,6 +79,50 @@ zn_policy_chunk_update(policy_data_t _policy, struct zn_pair location,
 }
 
 static void
+zn_policy_compact_zone(struct zn_policy_chunk *p, struct eviction_policy_chunk_zone * old_zone) {
+	unsigned char* buf = zn_read_from_disk_whole(p->cache, old_zone->zone_id, p->chunk_buf);
+	assert(buf);
+
+	// These arrays are allocated inside the function
+	uint32_t* data_ids = NULL;
+    struct zn_pair *locations = NULL;
+    uint32_t count = 0;
+                
+    zn_cachemap_compact_begin(&p->cache->cache_map, old_zone->zone_id, &data_ids, &locations, &count);
+
+    // Wait for all readers to end
+    while (g_atomic_int_get(&p->cache->active_readers[old_zone->zone_id]) > 0) {}
+
+	// Reset the current zone state
+	zsm_evict_and_write(&p->cache->zone_state, old_zone->zone_id, count);
+
+    // Copy all the old zones
+	unsigned char* random_buffer = generate_random_buffer(p->cache->chunk_sz);
+    for (uint32_t i = 0; i < count; i++) {
+
+		unsigned char* data = zn_gen_write_buffer(p->cache, old_zone->zone_id, random_buffer);
+
+		// Write buffer to disk, 4kb blocks at a time
+		unsigned long long wp =
+			CHUNK_POINTER(p->cache->zone_cap, p->cache->chunk_sz, locations[i].chunk_offset, locations[i].zone);
+		if (zn_write_out(p->cache->fd, p->cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
+            dbg_printf("Couldn't write to fd at wp=%llu\n", wp);
+        }
+    }
+
+	// Update the zsm
+    struct zn_pair end_pair = {
+        .zone = old_zone->zone_id,
+        .chunk_offset = count - 1,
+    };
+    int ret = zsm_return_active_zone(&p->cache->zone_state, &end_pair);
+    assert(!ret);
+
+    zn_cachemap_compact_end(&p->cache->cache_map, old_zone->zone_id, data_ids,
+                            locations, count);
+}
+
+static void
 zn_policy_chunk_gc(policy_data_t policy) {
     // TODO: If later separated from evict, lock here
     struct zn_policy_chunk *p = policy;
@@ -102,10 +149,14 @@ zn_policy_chunk_gc(policy_data_t policy) {
 
             struct zn_pair new_location;
             enum zsm_get_active_zone_error ret = zsm_get_active_zone(&p->cache->zone_state, &new_location);
+
+            // Not enough zones available. We are just going to compact the old zone
             if (ret != ZSM_GET_ACTIVE_ZONE_SUCCESS) {
-                assert(!"TODO");
-                // TODO: ???
+                zn_policy_compact_zone(p, old_zone);
+                return;
             }
+
+			// TODO: What if someone already wrote the existing data to a different location? We may need to check that first
 
             // Read the chunk from the old zone
             unsigned char *data = zn_read_from_disk(p->cache, &old_zone->chunks[i]);
