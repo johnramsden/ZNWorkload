@@ -143,11 +143,18 @@ task_function(gpointer data, gpointer user_data) {
 #endif
         free(data);
 
+        // PROFILE METRICS
         // Update cache size
         ZN_PROFILER_SET(
             thread_data->cache->profiler,
             ZN_PROFILER_METRIC_CACHE_USED_MIB,
             BYTES_TO_MIB(zn_evict_policy_get_cache_size(&thread_data->cache->eviction_policy))
+        );
+        // Update free zones
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_FREE_ZONES,
+            zsm_get_num_free_zones(&thread_data->cache->zone_state)
         );
         // Update cache hitratio
         double hr = zn_cache_get_hit_ratio(thread_data->cache);
