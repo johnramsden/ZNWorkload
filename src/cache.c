@@ -52,7 +52,16 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
     // Found the entry, read it from disk, update eviction, and decrement reader.
     if (result.type == RESULT_LOC) {
+        // PROFILE START
+        struct timespec start_time, end_time;
+        TIME_NOW(&start_time);
         unsigned char *data = zn_read_from_disk(cache, &result.value.location);
+        TIME_NOW(&end_time);
+        double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_READ_LATENCY, t);
+        ZN_PROFILER_PRINTF(cache->profiler, "READLATENCY_EVERY,%f\n", t);
+        // PROFILE END
+
         cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
                                              ZN_READ);
 
@@ -91,7 +100,18 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
         // Write buffer to disk, 4kb blocks at a time
         unsigned long long wp =
             CHUNK_POINTER(cache->zone_size, cache->chunk_sz, location.chunk_offset, location.zone);
-        if (zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp) != 0) {
+        
+        // PROFILE START
+        struct timespec start_time, end_time;
+        TIME_NOW(&start_time);
+        int ret = zn_write_out(cache->fd, cache->chunk_sz, data, WRITE_GRANULARITY, wp);
+        TIME_NOW(&end_time);
+        double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_WRITE_LATENCY, t);
+        ZN_PROFILER_PRINTF(cache->profiler, "WRITELATENCY_EVERY,%f\n", t);
+        // PROFILE END
+
+        if (ret != 0) {
             dbg_printf("Couldn't write to fd at wp=%llu, zone=%u, chunk=%u\n", wp, location.chunk_offset, location.zone);
             goto UNDO_ZONE_GET;
         }

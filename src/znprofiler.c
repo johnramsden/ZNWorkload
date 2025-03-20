@@ -9,12 +9,16 @@ char *zn_profiler_metric_names[PROFILING_METRICS] = {
     "GETLATENCY",
     "CACHE_USED_MIB",
     "HITRATIO",
+    "READLATENCY",
+    "WRITELATENCY",
 };
 
 enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
     ZN_PROFILER_AVG, // GET
     ZN_PROFILER_SET, // Cache size
     ZN_PROFILER_SET, // Hitratio
+    ZN_PROFILER_AVG, // Read lat
+    ZN_PROFILER_AVG, // Write lat
 };
 
 struct zn_profiler *
