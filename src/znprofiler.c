@@ -78,7 +78,11 @@ zn_profiler_write_all_and_reset(struct zn_profiler *zp) {
         g_mutex_lock(&zp->lock);
         double val = zp->metrics[i].value;
         if (zp->metrics[i].type == ZN_PROFILER_AVG) {
-            val = zp->metrics[i].value / zp->metrics[i].count;
+            if (zp->metrics[i].count == 0) {
+                val = 0;
+            } else {
+                val = zp->metrics[i].value / zp->metrics[i].count;
+            }
         }
         fprintf(zp->fp, "%s,%f\n", zn_profiler_metric_names[i], val);
         zn_profiler_reset_metric(zp, i);
