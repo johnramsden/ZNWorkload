@@ -36,6 +36,9 @@ zn_policy_promotional_update(policy_data_t _policy, struct zn_pair location,
             gpointer data = node->data;
             g_queue_delete_link(&policy->lru_queue, node);
             g_queue_push_tail(&policy->lru_queue, data);
+            // Replace in map, pointer invalid after destroying link
+            GList *new_node = g_queue_peek_tail_link(&policy->lru_queue);
+            g_hash_table_replace(policy->zone_to_lru_map, zone_ptr, new_node);
         }
 
         // If lru_loc == NULL, the zone is not in the LRU queue. This
