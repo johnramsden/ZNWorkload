@@ -133,7 +133,9 @@ task_function(gpointer data, gpointer user_data) {
             return;
         }
         TIME_NOW(&end_time);
-        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_GET_LATENCY, TIME_DIFFERENCE_NSEC(start_time, end_time));
+        double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_GET_LATENCY, t);
+        ZN_PROFILER_PRINTF(thread_data->cache->profiler, "GETLATENCY_EVERY,%f\n", t);
         // PROFILE END
 
 #ifdef VERIFY

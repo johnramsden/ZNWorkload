@@ -18,12 +18,19 @@ verify_enabled = get_option('verify')
 debug_enabled = get_option('debugging')
 BLOCK_ZONE_CAPACITY = get_option('BLOCK_ZONE_CAPACITY')
 READ_SLEEP_US = get_option('READ_SLEEP_US')
+PROFILER_PRINT_EVERY = get_option('PROFILER_PRINT_EVERY')
+PROFILING_INTERVAL_SEC = get_option('PROFILING_INTERVAL_SEC')
 
 # Conditional compiler flags
 cflags = [
     '-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string(),
-    '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string()
+    '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string(),
+    '-DPROFILING_INTERVAL_SEC=' + PROFILING_INTERVAL_SEC.to_string(),
 ]
+
+if PROFILER_PRINT_EVERY
+    cflags += ['-DZN_PROFILER_PRINT_EVERY']
+endif
 
 if verify_enabled
     cflags += ['-DVERIFY']

@@ -4,7 +4,8 @@ project_tests = [
 
 test_cflags = [
     '-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string(),
-    '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string()
+    '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string(),
+    '-DPROFILING_INTERVAL_SEC=' + PROFILING_INTERVAL_SEC.to_string(),
 ]
 
 foreach test_name : project_tests

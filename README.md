@@ -29,6 +29,8 @@ There are three variables that can be set:
 * `VERIFY`: Enables correctness verification (default true)
 * `BLOCK_ZONE_CAPACITY`: Sets SSD zone size (default 1077MiB 1129316352)
 * `READ_SLEEP_US`: Read delay to simulate remote data (default 40430us)
+* `PROFILING_INTERVAL_SEC`: Interval to print metrics on (averaged) (default 10)
+* `PROFILER_PRINT_EVERY`: Print metrics on every call, not just at interval (default true)
 
 To modify these:
 

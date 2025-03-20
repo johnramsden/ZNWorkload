@@ -7,7 +7,6 @@
 #include <glib.h>
 
 #define METRICS_BUFFER_SIZE (1u << 12)  // 4096
-#define PROFILING_INTERVAL_SEC 2
 #define PROFILING_HEADERS "METRIC,VALUE"
 
 enum zn_profiler_type {
@@ -119,6 +118,20 @@ zn_profiler_set_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, doub
             zn_profiler_set_metric((zp), (metric), (value));     \
         }                                   \
     } while (0)
+
+/**
+* Print metric if profiler on and ZN_PROFILER_EVERY=true
+*/
+#ifdef ZN_PROFILER_PRINT_EVERY
+#define ZN_PROFILER_PRINTF(zp, ...)    \
+    do {                                    \
+        if ((zp) != NULL) {                \
+            fprintf(zp->fp, ##__VA_ARGS__);     \
+        }                                   \
+    } while (0)
+#else
+#define ZN_PROFILER_PRINTF(...)
+#endif
 
 /**
  * @brief Resets the specified metric's value and usage count to zero.
