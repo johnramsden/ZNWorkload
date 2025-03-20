@@ -20,7 +20,7 @@ struct zn_profiler_metrics {
     enum zn_profiler_type type;
 };
 
-#define PROFILING_METRICS 6 // Keep in sync with enum, zn_profiler_metric_names, and zn_profiler_metric_types
+#define PROFILING_METRICS 9 // Keep in sync with enum, zn_profiler_metric_names, and zn_profiler_metric_types
 enum zn_profiler_tag {
     ZN_PROFILER_METRIC_GET_LATENCY = 0,
     ZN_PROFILER_METRIC_CACHE_USED_MIB = 1,
@@ -28,6 +28,9 @@ enum zn_profiler_tag {
     ZN_PROFILER_METRIC_READ_LATENCY = 3,
     ZN_PROFILER_METRIC_WRITE_LATENCY = 4,
     ZN_PROFILER_METRIC_CACHE_FREE_ZONES = 5,
+    ZN_PROFILER_METRIC_WRITE_THROUGHPUT = 6,
+    ZN_PROFILER_METRIC_READ_THROUGHPUT = 7,
+    ZN_PROFILER_METRIC_CACHE_THROUGHPUT = 8,
 };
 
 // (in znprofiler.c)

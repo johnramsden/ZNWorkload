@@ -60,6 +60,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
         double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
         ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_READ_LATENCY, t);
         ZN_PROFILER_PRINTF(cache->profiler, "READLATENCY_EVERY,%f\n", t);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_READ_THROUGHPUT, cache->chunk_sz);
         // PROFILE END
 
         cache->eviction_policy.update_policy(cache->eviction_policy.data, result.value.location,
@@ -100,7 +101,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
         // Write buffer to disk, 4kb blocks at a time
         unsigned long long wp =
             CHUNK_POINTER(cache->zone_size, cache->chunk_sz, location.chunk_offset, location.zone);
-        
+
         // PROFILE START
         struct timespec start_time, end_time;
         TIME_NOW(&start_time);
@@ -109,6 +110,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
         double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
         ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_WRITE_LATENCY, t);
         ZN_PROFILER_PRINTF(cache->profiler, "WRITELATENCY_EVERY,%f\n", t);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_WRITE_THROUGHPUT, cache->chunk_sz);
         // PROFILE END
 
         if (ret != 0) {

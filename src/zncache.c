@@ -144,6 +144,8 @@ task_function(gpointer data, gpointer user_data) {
         free(data);
 
         // PROFILE METRICS
+        // Throughput
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_CACHE_THROUGHPUT, thread_data->cache->chunk_sz);
         // Update cache size
         ZN_PROFILER_SET(
             thread_data->cache->profiler,

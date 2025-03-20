@@ -12,6 +12,9 @@ char *zn_profiler_metric_names[PROFILING_METRICS] = {
     "READLATENCY",
     "WRITELATENCY",
     "FREEZONES",
+    "WRITETHROUGHPUT",
+    "READTHROUGHPUT",
+    "CACHETHROUGHPUT",
 };
 
 enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
@@ -21,6 +24,9 @@ enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
     ZN_PROFILER_AVG, // Read lat
     ZN_PROFILER_AVG, // Write lat
     ZN_PROFILER_SET, // Free zones
+    ZN_PROFILER_AVG, // Write throughput
+    ZN_PROFILER_AVG, // Read throughput
+    ZN_PROFILER_AVG, // Cache throughput
 };
 
 struct zn_profiler *
