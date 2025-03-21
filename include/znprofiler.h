@@ -14,7 +14,8 @@
 
 enum zn_profiler_type {
     ZN_PROFILER_AVG = 0,
-    ZN_PROFILER_SET = 1
+    ZN_PROFILER_SET = 1,
+    ZN_PROFILER_OVER_TIME = 2,
 };
 
 struct zn_profiler_metrics {
@@ -151,7 +152,7 @@ zn_profiler_set_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, doub
  * This function sets both the cumulative value and usage count for the
  * given metric to zero, clearing any collected data.
  *
- * LOCKED BY **CALLER**
+ * LOCKED BY **CALLEE**
  *
  * @param[in,out] zp      Pointer to the profiler structure managing the metrics.
  * @param[in]     metric  Enum identifier of the metric to reset.
