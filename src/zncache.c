@@ -260,8 +260,10 @@ main(int argc, char **argv) {
     char *workload_file = NULL;
     uint64_t workload_max = UINT64_MAX;
     uint32_t *workload_buffer;
+
     int c;
     opterr = 0;
+    optind = 4;
     while ((c = getopt(argc, argv, "w:i:m:h")) != -1) {
         switch (c) {
             case 'w':
