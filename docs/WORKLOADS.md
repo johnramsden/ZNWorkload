@@ -29,7 +29,7 @@ To run all workloads, run (replacing $DEVICE and $NUM_THREADS):
 sudo ./scripts/run_workloads.sh $DEVICE vendor/workloadgen/core/target/workloads $NUM_THREADS
 ```
 
-Output will be in `./logs/$FILE-$DATE-run` files
+Output will be in `./logs/$DATE-run` files
 
 ## Cortes
 
@@ -82,4 +82,18 @@ Run simple:
 
 ```shell
 sudo ./zncache /dev/nvme0n2 5242880 1
+```
+
+## Plotting
+
+After running a workload split data via:
+
+```shell
+./scripts/split-metrics.sh $CSV_FILE $OUTPUT_DIR
+```
+
+Plot via:
+
+```shell
+for f in $OUTPUT_DIR/* ; do echo $f; python ./eval/plotting/plot.py $f; done
 ```

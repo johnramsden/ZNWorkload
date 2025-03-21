@@ -35,6 +35,8 @@ def main():
                 # Convert time from ms to minutes.
                 x_val = float(row[0]) / 60000.0
                 y_val = float(row[2])
+                if y_val == 0.0:
+                    continue
             except ValueError as e:
                 print(f"Skipping row {row}: {e}")
                 continue
@@ -46,12 +48,13 @@ def main():
     plot_title = args.title if args.title is not None else default_label
 
     # Create scatter plot.
-    plt.scatter(x_vals, y_vals, label=default_label)
+    plt.scatter(x_vals, y_vals, label=default_label, s=1)
     plt.xlabel("Time (minutes)")
     plt.ylabel(y_label)
     plt.title(plot_title)
     plt.legend()
     plt.savefig(f"{plot_title}.png")
+    plt.show()
 
 if __name__ == '__main__':
     main()
