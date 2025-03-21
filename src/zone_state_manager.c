@@ -20,11 +20,10 @@
 static int
 close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     if (zone->state == ZN_ZONE_FULL) {
-        dbg_printf("Zone already closed\n");
         return 0;
     }
 
-    unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+    unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
     dbg_printf("Closing zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
@@ -67,11 +66,11 @@ close_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 static int
 reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     if (zone->state == ZN_ZONE_FREE) {
-        dbg_printf("Zone already closed\n");
+        dbg_printf("Zone %u already closed\n", zone->zone_id);
         return 0;
     }
 
-    unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+    unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
     dbg_printf("Resetting zone %u, zone pointer %llu\n", zone->zone_id, wp);
     zbd_set_log_level(ZBD_LOG_ERROR);
 
@@ -84,7 +83,7 @@ reset_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 			return ret;
 		}
     }
-    
+
     zone->state = ZN_ZONE_FREE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->free, zone);
@@ -109,12 +108,12 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
     assert(zone->state == ZN_ZONE_FREE);
 
     if (g_queue_get_length(state->active) + state->writes_occurring >= state->max_nr_active_zones) {
-        dbg_printf("Already at active zone limit\n");
         return -1;
     }
 
 	if (state->backend_type == ZE_BACKEND_ZNS) {
-		unsigned long long wp = CHUNK_POINTER(state->zone_cap, state->chunk_size, 0, zone->zone_id);
+        dbg_printf("chunk_offset=%u, zone=%u\n", zone->chunk_offset, zone->zone_id);
+		unsigned long long wp = CHUNK_POINTER(state->zone_size, state->chunk_size, 0, zone->zone_id);
 		dbg_printf("Opening zone %u, zone pointer %llu\n", zone->zone_id, wp);
 
 		int ret = zbd_open_zones(state->fd, wp, 1);
@@ -122,7 +121,7 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 			return ret;
 		}
     }
-    
+
     zone->state = ZN_ZONE_ACTIVE;
     zone->chunk_offset = 0;
     g_queue_push_tail(state->active, zone);
@@ -132,12 +131,13 @@ open_zone(struct zone_state_manager *state, struct zn_zone *zone) {
 
 void
 zsm_init(struct zone_state_manager *state, const uint32_t num_zones, const int fd,
-         const uint64_t zone_cap, const size_t chunk_size,
+         const uint64_t zone_cap, const uint64_t zone_size, const size_t chunk_size,
          const uint32_t max_nr_active_zones,
          const enum zn_backend backend_type) {
     assert(state);
     state->fd = fd;
     state->zone_cap = zone_cap;
+    state->zone_size = zone_size;
     state->chunk_size = chunk_size;
     state->max_zone_chunks = zone_cap / chunk_size;
     state->max_nr_active_zones = max_nr_active_zones;
@@ -227,12 +227,13 @@ zsm_get_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     return ZSM_GET_ACTIVE_ZONE_SUCCESS;
 }
 
+#ifdef TODO
 // TODO
 GArray
 zsm_get_active_zone_batch(int chunks) {
     (void) chunks;
-    return (GArray) {};
 }
+#endif
 
 void
 zsm_evict_and_write(struct zone_state_manager *state, uint32_t zone_id, uint32_t count) {
@@ -280,7 +281,7 @@ zsm_return_active_zone(struct zone_state_manager *state, struct zn_pair *pair) {
     if (zone->chunk_offset == state->max_zone_chunks) {
         int ret = close_zone(state, zone);
         if (ret != 0) {
-            dbg_printf("An error occurred while closing the zone\n");
+            dbg_printf("An error occurred while closing zone %u\n", zone->zone_id);
             g_mutex_unlock(&state->state_mutex);
             return ret;
         }
@@ -311,6 +312,8 @@ zsm_evict(struct zone_state_manager *state, int zone_to_free) {
     }
 
     assert(zone->state == ZN_ZONE_FREE);
+
+    g_queue_clear(state->state[zone_to_free].invalid);
 
     g_mutex_unlock(&state->state_mutex);
     return 0;
@@ -370,7 +373,7 @@ zsm_get_num_full_zones(struct zone_state_manager *state) {
 uint32_t
 zsm_get_num_invalid_chunks(struct zone_state_manager *state, uint32_t zone) {
     g_mutex_lock(&state->state_mutex);
-    uint32_t len = g_queue_get_length(state[zone].state->invalid);
+    uint32_t len = g_queue_get_length(state->state[zone].invalid);
     g_mutex_unlock(&state->state_mutex);
     return len;
 }

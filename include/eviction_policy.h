@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include "znbackend.h"
 
 // Forward declare zn_cache to avoid cyclic dependency
@@ -58,3 +60,8 @@ struct zn_evict_policy {
  */
 void
 zn_evict_policy_init(struct zn_evict_policy *policy, enum zn_evict_policy_type type, struct zn_cache *cache);
+
+/** @brief Get LRU size
+ */
+size_t
+zn_evict_policy_get_cache_size(struct zn_evict_policy *policy);

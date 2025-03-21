@@ -10,10 +10,11 @@
 #include "zone_state_manager.h"
 #include "eviction_policy.h"
 #include "znbackend.h"
+#include "znprofiler.h"
 
 #define MICROSECS_PER_SECOND 1000000
 #define EVICT_SLEEP_US ((long) (0.5 * MICROSECS_PER_SECOND))
-#define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND))
+// #define ZE_READ_SLEEP_US ((long) (0.25 * MICROSECS_PER_SECOND)) // Compile-time
 
 #define WRITE_GRANULARITY 4096
 #define MAX_OPEN_ZONES 14
@@ -31,6 +32,13 @@ struct zn_reader {
     uint32_t* workload_buffer;
     uint64_t workload_max;
 };
+
+struct zn_cache_hitratio {
+    GMutex lock;
+    uint64_t hits;
+    uint64_t misses;
+};
+
 /**
  * @struct zn_cache
  * @brief Represents a cache system that manages data storage in predefined zones.
@@ -47,6 +55,7 @@ struct zn_cache {
     uint64_t max_zone_chunks;     /**< Maximum number of chunks a zone can hold. */
     size_t chunk_sz;              /**< Size of each chunk in bytes. */
     uint64_t zone_cap;            /**< Maximum storage capacity per zone in bytes. */
+    uint64_t zone_size;           /**< Storage size per zone in bytes. */
 
     struct zn_cachemap cache_map;
     struct zn_evict_policy eviction_policy;
@@ -54,7 +63,9 @@ struct zn_cache {
     struct zn_reader reader; /**< Reader structure for tracking workload location. */
     gint *active_readers;    /**< Owning reference of the list of active readers per zone */
 
+    struct zn_cache_hitratio ratio;
 
+    struct zn_profiler * profiler; /**< Stores metrics */
 };
 
 /**
@@ -95,7 +106,7 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 void
 zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, uint64_t zone_cap,
               int fd, enum zn_evict_policy_type policy, enum zn_backend backend, uint32_t* workload_buffer,
-              uint64_t workload_max);
+              uint64_t workload_max, char *metrics_file);
 
 /**
  * @brief Destroys and cleans up a `zn_cache` structure.
@@ -151,5 +162,24 @@ zn_write_out(int fd, size_t to_write, const unsigned char *buffer, ssize_t write
 unsigned char *
 zn_gen_write_buffer(struct zn_cache *cache, uint32_t zone_id, unsigned char *buffer);
 
+/**
+ * Validate contents of cache read
+ *
+ * @param cache Pointer to the `zn_cache` structure.
+ * @param data Data to validate against RANDOM_DATA
+ * @param id Identifier that should be in first 4 bytes
+ * @return Non-zero on error
+ */
+int
+zn_validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id, unsigned char *compare_buffer);
+
+/**
+ * Get the cache hitratio
+ * 
+ * @param cache Pointer to the `zn_cache` structure.
+ * @return Cache hit ratio
+ */
+double
+zn_cache_get_hit_ratio(struct zn_cache * cache);
 
 #endif // ZNCACHE_H

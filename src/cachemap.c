@@ -206,10 +206,8 @@ zn_cachemap_clear_chunk(struct zn_cachemap *map, struct zn_pair *location) {
     dbg_print_g_hash_table("map->data_map[location.zone] before", map->data_map[location->zone], PRINT_G_HASH_TABLE_GINT);
 
     dbg_printf("Looking up zone=%u, chunk=%u\n", location->zone, location->chunk_offset);
-    gpointer data_id_ptr = g_hash_table_lookup(map->data_map[location->zone], GUINT_TO_POINTER(location->chunk_offset));
-    assert(data_id_ptr);
+    int data_id = GPOINTER_TO_INT(g_hash_table_lookup(map->data_map[location->zone], GUINT_TO_POINTER(location->chunk_offset)));
 
-    int data_id = GPOINTER_TO_INT(data_id_ptr);
     dbg_printf("Got data_id=%d\n", data_id);
 
     assert(g_hash_table_contains(map->zone_map, GINT_TO_POINTER(data_id)));

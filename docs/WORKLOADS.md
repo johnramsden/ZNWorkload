@@ -1,0 +1,99 @@
+# Workloads
+
+## General
+
+```shell
+sudo apt install maven meson
+```
+
+To generate workloads run:
+
+```shell
+cd vendor/workloadgen/core
+mvn -Dtest=site.ycsb.generator.TestZipfianGeneratorZNS test
+```
+
+Workloads will be located in `target/workloads`.
+
+Workloads can be tuned according to hardware availible by modifying paramaters in `core/src/test/java/site/ycsb/generator/TestZipfianGeneratorZNS.java`:
+
+```java
+final int zone_size = 1024 * 1024;
+final int num_zones = 28;
+final int iterations = 1500;
+```
+
+To run all workloads, run (replacing $DEVICE and $NUM_THREADS):
+
+```shell
+sudo ./scripts/run_workloads.sh $DEVICE vendor/workloadgen/core/target/workloads $NUM_THREADS
+```
+
+Output will be in `./logs/$DATE-run` files
+
+## Cortes
+
+On cortes, code is in `/data/john/ZNWorkload`.
+
+SSD: `/dev/nvme1n1`
+ZNS: `/dev/nvme0n2`
+
+Sanity check:
+
+```
+$ lsblk
+NAME         MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+sda            8:0    0 894.3G  0 disk 
+├─sda1         8:1    0   511M  0 part /boot/efi
+├─sda2         8:2    0     1M  0 part 
+├─sda3         8:3    0 893.8G  0 part 
+│ ├─vg-swap  252:0    0     8G  0 lvm  [SWAP]
+│ ├─vg-root1 252:1    0  92.7G  0 lvm  /
+│ ├─vg-var1  252:2    0  10.5G  0 lvm  /var
+│ ├─vg-root2 252:3    0  92.7G  0 lvm  /altroot
+│ ├─vg-var2  252:4    0  10.5G  0 lvm  /altroot/var
+│ └─vg-data  252:5    0 669.4G  0 lvm  /data
+└─sda4         8:4    0     1M  0 part 
+nvme0n1      259:0    0     2G  0 disk 
+nvme0n2      259:1    0   1.8T  0 disk 
+nvme1n1      259:2    0 894.3G  0 disk
+```
+
+```
+$ lsblk -z
+NAME         ZONED
+sda          none
+├─sda1       none
+├─sda2       none
+├─sda3       none
+│ ├─vg-swap  none
+│ ├─vg-root1 none
+│ ├─vg-var1  none
+│ ├─vg-root2 none
+│ ├─vg-var2  none
+│ └─vg-data  none
+└─sda4       none
+nvme0n1      none
+nvme0n2      host-managed
+nvme1n1      none
+```
+
+Run simple:
+
+```shell
+sudo ./zncache /dev/nvme0n2 5242880 1
+```
+
+## Plotting
+
+After running a workload split data via:
+
+```shell
+./scripts/split-metrics.sh $CSV_FILE $OUTPUT_DIR
+```
+
+Plot via:
+
+```shell
+for f in $OUTPUT_DIR/* ; do echo $f; python ./eval/plotting/plot.py $f; done
+```

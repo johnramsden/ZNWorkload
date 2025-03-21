@@ -84,11 +84,11 @@ int test_extract_empty_heap() {
 int test_heap_expansion() {
     struct zn_minheap *heap = zn_minheap_init(2); // Small initial size
 
-    uint32_t entries = 10;
+    int entries = 10;
 
     int *d = malloc(sizeof(int) * entries);
 
-    for (uint32_t i = 0; i < entries; i++) {
+    for (int i = 0; i < entries; i++) {
         d[i] = i;
     }
 
@@ -96,9 +96,9 @@ int test_heap_expansion() {
         zn_minheap_insert(heap, &d[i], i);  // Insert increasing priority
     }
 
-    for (uint32_t i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
         struct zn_minheap_entry *result = zn_minheap_extract_min(heap);
-        if (!result || *((int *)result->data) != i || result->priority != i) {
+        if (!result || *((int *)result->data) != i || result->priority != (uint32_t)i) {
             zn_minheap_destroy(heap);
             return 1;  // Failure
         }

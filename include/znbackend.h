@@ -2,7 +2,7 @@
 #define ZNBACKEND_H
 
 #include <stdint.h>
-
+#include <stdbool.h>
 /**
  * @enum zn_backend
  * @brief Defines SSD backends

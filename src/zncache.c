@@ -4,15 +4,17 @@
 #include <string.h>
 #include "zncache.h"
 
+#include "znprofiler.h"
 #include "eviction_policy.h"
 #include "libzbd/zbd.h"
 #include "znutil.h"
 #include "zone_state_manager.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <glib.h>
-#include <inttypes.h>
+#include <getopt.h>
 #include <linux/fs.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,10 +22,6 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-
-#define EVICTION_POLICY ZN_EVICT_CHUNK
-
-// BLOCK_ZONE_CAPACITY Defined at compile-time
 
 // No evict
 
@@ -46,45 +44,13 @@ unsigned char *RANDOM_DATA = NULL;
 struct zn_thread_data {
     struct zn_cache *cache; /**< Pointer to the cache instance associated with this thread. */
     uint32_t tid;           /**< Unique identifier for the thread. */
-    bool done;              /**< Marks completed */
+    bool *done;              /**< Marks completed */
+    uint32_t nr_threads;    /**< Total threads */
+    uint32_t *nr_threads_completed;    /**< Total threads done */
+    GMainLoop *loop;        /**< Main loop */
+    GMutex *thread_counter_lock;
 };
 
-[[maybe_unused]] static void
-zn_print_cache(struct zn_cache *cache) {
-    (void) cache;
-#ifdef DEBUG
-    printf("\tchunk_sz=%lu\n", cache->chunk_sz);
-    printf("\tnr_zones=%u\n", cache->nr_zones);
-    printf("\tzone_cap=%" PRIu64 "\n", cache->zone_cap);
-    printf("\tmax_zone_chunks=%" PRIu64 "\n", cache->max_zone_chunks);
-#endif
-}
-
-/**
- * Validate contents of cache read
- *
- * @param cache Pointer to the `zn_cache` structure.
- * @param data Data to validate against RANDOM_DATA
- * @param id Identifier that should be in first 4 bytes
- * @return Non-zero on error
- */
-static int
-validate_read(struct zn_cache *cache, unsigned char *data, uint32_t id) {
-    uint32_t read_id;
-    memcpy(&read_id, data, sizeof(uint32_t));
-    if (read_id != id) {
-        dbg_printf("Invalid read_id(%u)!=id(%u)\n", read_id, id);
-        return -1;
-    }
-    // 4 bytes for int
-    for (uint32_t i = sizeof(uint32_t); i < cache->chunk_sz; i++) {
-        if (data[i] != RANDOM_DATA[i]) {
-            dbg_printf("data[%d]!=RANDOM_DATA[%d]\n", read_id, id);
-            return -1;
-        }
-    }
-    return 0;
-}
 
 /**
  * Eviction thread
@@ -100,7 +66,7 @@ evict_task(gpointer user_data) {
     printf("Evict task started by thread %p\n", (void *) g_thread_self());
 
     while (true) {
-        if (thread_data->done) {
+        if (*thread_data->done) {
             break;
         }
 
@@ -128,7 +94,6 @@ task_function(gpointer data, gpointer user_data) {
     struct zn_thread_data *thread_data = data;
 
     printf("Task %d started by thread %p\n", thread_data->tid, (void *) g_thread_self());
-    // zn_print_cache(thread_data->cache);
 
     // Handles any cache read requests
     while (true) {
@@ -146,7 +111,7 @@ task_function(gpointer data, gpointer user_data) {
 		}
 
 		// Increment the query index
-		uint32_t wi = thread_data->cache->reader.workload_index;
+		uint32_t wi = thread_data->cache->reader.workload_index++;
 		g_mutex_unlock(&thread_data->cache->reader.lock);
 
         printf("[%d]: ze_cache_get(workload[%d]=%d)\n", thread_data->tid, wi,
@@ -155,63 +120,201 @@ task_function(gpointer data, gpointer user_data) {
 		data_id = thread_data->cache->reader.workload_buffer[wi];
 
         // Find the data in the cache
+        // PROFILE START
+        struct timespec start_time, end_time;
+        TIME_NOW(&start_time);
         unsigned char *data = zn_cache_get(thread_data->cache, data_id, RANDOM_DATA);
         if (data == NULL) {
-            dbg_printf("ERROR: Couldn't get data\n");
+            dbg_printf("ERROR: Couldn't get data for data_id=%u\n", data_id);
             return;
         }
+        TIME_NOW(&end_time);
+        double t = TIME_DIFFERENCE_NSEC(start_time, end_time);
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_GET_LATENCY, t);
+        ZN_PROFILER_PRINTF(thread_data->cache->profiler, "GETLATENCY_EVERY,%f\n", t);
+        // PROFILE END
+
 #ifdef VERIFY
-        assert(validate_read(thread_data->cache, data, data_id) == 0);
+        assert(zn_validate_read(thread_data->cache, data, data_id, RANDOM_DATA) == 0);
 #endif
         free(data);
 
-        thread_data->cache->reader.workload_index++;
+        // PROFILE METRICS
+        // Throughput
+        ZN_PROFILER_UPDATE(thread_data->cache->profiler, ZN_PROFILER_METRIC_CACHE_THROUGHPUT, thread_data->cache->chunk_sz);
+        // Update cache size
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_USED_MIB,
+            BYTES_TO_MIB(zn_evict_policy_get_cache_size(&thread_data->cache->eviction_policy))
+        );
+        // Update free zones
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_FREE_ZONES,
+            zsm_get_num_free_zones(&thread_data->cache->zone_state)
+        );
+        // Update cache hitratio
+        double hr = zn_cache_get_hit_ratio(thread_data->cache);
+        ZN_PROFILER_SET(
+            thread_data->cache->profiler,
+            ZN_PROFILER_METRIC_CACHE_HITRATIO,
+            hr
+        );
+        // Show thread still active
+        ZN_PROFILER_PRINTF(thread_data->cache->profiler, "THREADID_EVERY,%d\n", thread_data->tid);
+        dbg_printf("Hitratio: %f\n", hr);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());
+
+    g_mutex_lock(thread_data->thread_counter_lock);
+    (*thread_data->nr_threads_completed)++;
+    if (*thread_data->nr_threads_completed == thread_data->nr_threads) {
+        g_main_loop_quit(thread_data->loop);
+        *thread_data->done = true;
+    }
+    g_mutex_unlock(thread_data->thread_counter_lock);
+}
+
+/**
+ * Profiling task triggerred periodically
+ *
+ * @param user_data Profiler
+ * @return TRUE
+ */
+static gboolean
+profiling_task(gpointer user_data) {
+    struct zn_profiler *zp = user_data;
+
+    zn_profiler_write_all_and_reset(zp);
+
+    // Return TRUE to keep firing
+    return TRUE;
+}
+
+static void
+usage(FILE * file, char *progname) {
+    fprintf(file,
+            "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [-w workload_file] [-i iterations] [-m metrics_file ] [ -h]\n",
+            progname);
+}
+
+/**
+ * Read an exact workload amount
+ *
+ * @param fd File to read from
+ * @param buffer Buffer to populate
+ * @param size Exact size to read
+ * @return Non-zero on error
+ */
+int
+read_workload(int fd, uint32_t *buffer, size_t size) {
+    size_t total_bytes_read = 0;
+
+    while (total_bytes_read < size) {
+        errno = 0;
+        ssize_t bytes_read = read(fd, buffer + total_bytes_read, size - total_bytes_read);
+        if (bytes_read < 0) {
+            if (errno == EINTR) {
+                // Interrupted
+                continue;
+            }
+            fprintf(stderr, "Couldn't read the file: '%s'\n", strerror(errno));
+            return 1;
+        }
+        if (bytes_read == 0) {
+            break;
+        }
+        total_bytes_read += bytes_read;
+    }
+
+    if (total_bytes_read != size) {
+        fprintf(stderr, "Couldn't read the file fully, read %zu bytes out of %zu\n", total_bytes_read, size);
+        return 1;
+    }
+
+    return 0;
 }
 
 int
 main(int argc, char **argv) {
     zbd_set_log_level(ZBD_LOG_ERROR);
 
-    if (argc < 4 || argc > 5) {
-        fprintf(stderr, "Usage: %s <DEVICE> <CHUNK_SZ> <THREADS> [workload] [iterations]\n", argv[0]);
-        return -1;
-    }
-
     if (geteuid() != 0) {
         fprintf(stderr, "Please run as root\n");
         return -1;
     }
 
+    if (argc < 4 || argc > 11) {
+        usage(stderr, argv[0]);
+        return -1;
+    }
+
     char *device = argv[1];
-    enum zn_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
+
     size_t chunk_sz = strtoul(argv[2], NULL, 10);
     int32_t nr_threads = strtol(argv[3], NULL, 10);
     int32_t nr_eviction_threads = 1;
 
+    char *metrics_file = NULL;
+    char *workload_file = NULL;
+    uint64_t workload_max = UINT64_MAX;
     uint32_t *workload_buffer;
-    uint64_t workload_max;
-    if (argc == 5) {
 
-        printf("Attempting to read %s\n", argv[4]);
-        int workload_fd = open(argv[4], O_RDONLY);
+    int c;
+    opterr = 0;
+    optind = 4;
+    while ((c = getopt(argc, argv, "w:i:m:h")) != -1) {
+        switch (c) {
+            case 'w':
+                workload_file = optarg;
+            break;
+            case 'i':
+                workload_max = strtol(optarg, NULL, 10);
+            break;
+            case 'm':
+                metrics_file = optarg;
+            break;
+            case 'h':
+                usage(stdout, argv[0]);
+                exit(EXIT_SUCCESS);
+            case '?':
+                if (isprint(optopt)) {
+                    fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                } else {
+                    fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+                }
+                usage(stderr, argv[0]);
+                return -1;
+            default:
+                usage(stderr, argv[0]);
+                exit(-1);
+        }
+    }
+
+    enum zn_backend device_type = zbd_device_is_zoned(device) ? ZE_BACKEND_ZNS : ZE_BACKEND_BLOCK;
+
+    if (workload_file != NULL) {
+        if (workload_max == UINT64_MAX) {
+            fprintf(stderr, "'iterations' must be set if 'workload_file' is set\n");
+            return 1;
+        }
+        int workload_fd = open(workload_file, O_RDONLY);
         if (workload_fd == -1) {
-            printf("Couldn't read workload file\n");
+            fprintf(stderr, "Couldn't read workload file %s\n", workload_file);
             return 1;
         }
 
-        workload_max = strtol(argv[5], NULL, 10);
-        workload_buffer = malloc(workload_max * sizeof(uint32_t));
+        size_t workload_sz = workload_max * sizeof(uint32_t);
 
-        assert(workload_max <= _POSIX_SSIZE_MAX && "Can't be greater than this number");
-        if (read(workload_fd, workload_buffer, workload_max * sizeof(uint32_t)) != (ssize_t)workload_max) {
-            printf("Couldn't read all of the workload file\n");
+        workload_buffer = malloc(workload_sz);
+        assert(workload_buffer != NULL);
+
+        if (read_workload(workload_fd, workload_buffer, workload_sz) != 0) {
             return 1;
         }
-
     } else {
-        workload_max = sizeof(simple_workload);
+        workload_max = sizeof(simple_workload) / sizeof(uint32_t);
         workload_buffer = simple_workload;
     }
 
@@ -222,8 +325,12 @@ main(int argc, char **argv) {
            "\tBLOCK_ZONE_CAPACITY: %u\n"
            "\tWorker threads: %u\n"
            "\tEviction threads: %u\n"
-           "\tWorkload file: %s\n",           
-           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz, BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads, (argc == 5) ? argv[5] : "Simple generator");
+           "\tWorkload file: %s\n"
+           "\tMetrics file: %s\n",
+           device, (device_type == ZE_BACKEND_ZNS) ? "ZNS" : "Block", chunk_sz,
+           BLOCK_ZONE_CAPACITY, nr_threads, nr_eviction_threads,
+           workload_file != NULL ? workload_file : "Simple generator",
+           metrics_file != NULL ? metrics_file : "NO");
 
 #ifdef DEBUG
     printf("\tDEBUG=on\n");
@@ -272,6 +379,7 @@ main(int argc, char **argv) {
         }
     } else {
         zone_capacity = BLOCK_ZONE_CAPACITY;
+        info.zone_size = BLOCK_ZONE_CAPACITY;
     }
 
     RANDOM_DATA = generate_random_buffer(chunk_sz);
@@ -280,7 +388,7 @@ main(int argc, char **argv) {
     }
 
     struct zn_cache cache = {0};
-    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max);
+    zn_init_cache(&cache, &info, chunk_sz, zone_capacity, fd, EVICTION_POLICY, device_type, workload_buffer, workload_max, metrics_file);
 
     GError *error = NULL;
     // Create a thread pool with a maximum of nr_threads
@@ -291,13 +399,31 @@ main(int argc, char **argv) {
     }
 
     struct timespec start_time, end_time;
-    TIME_NOW(&start_time);
 
     // Push tasks to the thread pool
     struct zn_thread_data *thread_data = g_new(struct zn_thread_data, nr_threads);
+    // Setup mainloop to iterate context for profiling triggers
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+
+    if (cache.profiler != NULL && !cache.profiler->realtime) {
+        g_timeout_add_seconds(PROFILING_INTERVAL_SEC, profiling_task, cache.profiler);
+    }
+
+    GMutex lock;
+    g_mutex_init(&lock);
+    uint32_t nr_threads_completed = 0;
+    bool done = false;
+
+    TIME_NOW(&start_time);
     for (int i = 0; i < nr_threads; i++) {
         thread_data[i].tid = i;
         thread_data[i].cache = &cache;
+        thread_data[i].nr_threads = nr_threads;
+        thread_data[i].nr_threads_completed = &nr_threads_completed;
+        thread_data[i].thread_counter_lock = &lock;
+        thread_data[i].loop = loop;
+        thread_data[i].done = &done;
+
         g_thread_pool_push(pool, &thread_data[i], &error);
         if (error) {
             fprintf(stderr, "Error pushing task: %s\n", error->message);
@@ -306,24 +432,24 @@ main(int argc, char **argv) {
     }
 
     // Setup eviction thread
-    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = false};
+    struct zn_thread_data eviction_thread_data = {.tid = 0, .cache = &cache, .done = &done};
 
     GThread *thread = g_thread_new("evict-thread", evict_task, &eviction_thread_data);
 
+    g_main_loop_run(thread_data->loop);
+
     // Wait for tasks to finish and free the thread pool
     g_thread_pool_free(pool, FALSE, TRUE);
-
-    // Notify GC thread we are done
-    eviction_thread_data.done = true;
 
     g_thread_join(thread);
 
     TIME_NOW(&end_time);
 
-    dbg_printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time),
+    printf("Total runtime: %0.2fs (%0.2fms)\n", TIME_DIFFERENCE_SEC(start_time, end_time),
                TIME_DIFFERENCE_MILLISEC(start_time, end_time));
 
     // Cleanup
+    g_main_loop_unref(loop);
     zn_destroy_cache(&cache);
     g_free(thread_data);
     free(RANDOM_DATA);

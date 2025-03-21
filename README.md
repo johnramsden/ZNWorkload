@@ -23,11 +23,19 @@ meson setup buildDir
 meson compile -C buildDir
 ```
 
-There are three variables that can be set:
+There are various variables that can be set: (defaults in `meson_options.txt`)
 
 * `DEBUG`: Enables debug output (default true)
 * `VERIFY`: Enables correctness verification (default true)
 * `BLOCK_ZONE_CAPACITY`: Sets SSD zone size (default 1077MiB 1129316352)
+* `READ_SLEEP_US`: Read delay to simulate remote data (default 40430us)
+* `PROFILING_INTERVAL_SEC`: Interval to print metrics on (averaged) (default 10)
+* `PROFILER_PRINT_EVERY`: Print metrics on every call, not just at interval (default true)
+* `EVICT_HIGH_THRESH_ZONES`: High water mark for zone eviction
+* `EVICT_LOW_THRESH_ZONES`: Low water mark for zone eviction
+* `EVICT_HIGH_THRESH_CHUNKS`: High water mark for chunk eviction
+* `EVICT_LOW_THRESH_CHUNKS`: Low water mark for chunk eviction
+* `EVICTION_POLICY`: (`ZN_EVICT_PROMOTE_ZONE`, `ZN_EVICT_CHUNK`) Eviction policy, default `ZN_EVICT_PROMOTE_ZONE`
 
 To modify these:
 
@@ -58,6 +66,10 @@ To destroy:
 ```shell
 ./scripts/nullblk-zoned-delete.sh 0 # Replace 0 with ID if different
 ```
+
+# Workloads
+
+For detailed experiment reproduction, see [WORKLOADS](docs/WORKLOADS.md)
 
 ### Min-workload
 

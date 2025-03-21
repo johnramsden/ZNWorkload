@@ -92,26 +92,24 @@ jobs:
           cd ZNWorkload
           sudo ./scripts/nullblk.sh 4096 1 0 14 "zns"
           sudo ./buildDir/src/zncache /dev/nullb0 524288 2
-          sudo ./scripts/nullblk-zoned-delete.sh 0
           EOF
 
       - name: Run SSD
         run: |
           sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
-          sudo ./scripts/nullblk-zoned-delete.sh 0 &>/dev/null || true # incase previous failed
           set -e  # Exit on first error
           cd ZNWorkload
           sudo ./scripts/nullblk.sh 4096 1 0 14 "ssd"
-          sudo ./buildDir/src/zncache /dev/nullb0 524288 2
-          sudo ./scripts/nullblk-zoned-delete.sh 0
+          sudo ./buildDir/src/zncache /dev/nullb1 524288 2
           EOF
 
       - name: Run Test Suite
         run: |
           sshpass -p "ubuntu" ssh -o StrictHostKeyChecking=no -p 2222 ubuntu@127.0.0.1 << 'EOF'
+          ls /dev/nullb*
           cd ZNWorkload
           meson test -C buildDir --list
-          if ! meson test -C buildDir; then
+          if ! sudo meson test -C buildDir; then
               [ -f ./buildDir/meson-logs/testlog.txt ] && cat ./buildDir/meson-logs/testlog.txt
               exit 1
           fi
