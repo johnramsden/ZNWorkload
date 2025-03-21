@@ -10,7 +10,8 @@ test_cflags = [
     '-DEVICT_HIGH_THRESH_ZONES=' + EVICT_HIGH_THRESH_ZONES.to_string(),
     '-DEVICT_LOW_THRESH_ZONES=' + EVICT_LOW_THRESH_ZONES.to_string(),
     '-DEVICT_HIGH_THRESH_CHUNKS=' + EVICT_HIGH_THRESH_CHUNKS.to_string(),
-    '-DEVICT_LOW_THRESH_CHUNKS=' + EVICT_LOW_THRESH_CHUNKS.to_string()
+    '-DEVICT_LOW_THRESH_CHUNKS=' + EVICT_LOW_THRESH_CHUNKS.to_string(),
+    '-D_POSIX_C_SOURCE=199309L', # CLOCK_MONO
 ]
 
 foreach test_name : project_tests
