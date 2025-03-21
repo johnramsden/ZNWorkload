@@ -54,15 +54,15 @@ for file in "$directory"/*.bin; do
     {
         echo "Chunk Size: $chunk_size"
         echo "Latency: $latency"
-        echo "Distribution Type: $distributionType"
-        echo "Working Set Ratio: $working_set_ratio"
+        echo "Distribution Type: $distr"
+        echo "Working Set Ratio: $ratio"
         echo "Zone Size: $zone_size"
         echo "Iterations: $iterations"
-        echo "Number of Zones: $num_zones"
-        echo "Total Chunks: $total_chunks"
-        echo "High Water: $evict_high_water"
-        echo "Low water: $evict_low_water"
-        echo "Eviction $eviction_type"
+        echo "Number of Zones: $n_zones"
+        echo "Total Chunks: $tchunks"
+        echo "High Water: $evict_high"
+        echo "Low water: $evict_low"
+        echo "Eviction $eviction"
 
     } | tee "$runfile"
 
@@ -74,11 +74,11 @@ for file in "$directory"/*.bin; do
     meson setup --reconfigure buildDir -Dverify=false \
                                        -Ddebugging=false \
                                        -DREAD_SLEEP_US="$latency" \
-                                       -DEVICT_HIGH_THRESH_ZONES="$evict_high_water" \
-                                       -DEVICT_LOW_THRESH_ZONES="$evict_low_water" \
-                                       -DEVICT_HIGH_THRESH_CHUNKS="$evict_high_water" \
-                                       -DEVICT_LOW_THRESH_CHUNKS="$evict_low_water" \
-                                       -DEVICTION_POLICY="$eviction_type" \
+                                       -DEVICT_HIGH_THRESH_ZONES="$evict_high" \
+                                       -DEVICT_LOW_THRESH_ZONES="$evict_low" \
+                                       -DEVICT_HIGH_THRESH_CHUNKS="$evict_high" \
+                                       -DEVICT_LOW_THRESH_CHUNKS="$evict_low" \
+                                       -DEVICTION_POLICY="$eviction" \
                                         >/dev/null
     meson compile -C buildDir >/dev/null
 
