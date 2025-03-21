@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <glib.h>
+#include <time.h>
 
 #define METRICS_BUFFER_SIZE (1u << 12)  // 4096
 #define PROFILING_HEADERS "TIMESTAMP,METRIC,VALUE"

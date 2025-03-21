@@ -6,6 +6,7 @@
 #include "libzbd/zbd.h"
 
 #include "zncache.h"
+#include <time.h> // clock macro
 
 #include <glib.h>
 
