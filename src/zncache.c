@@ -72,7 +72,7 @@ evict_task(gpointer user_data) {
 
         uint32_t free_zones = zsm_get_num_free_zones(&cache->zone_state);
         if (free_zones > EVICT_HIGH_THRESH_ZONES) {
-            g_usleep(EVICT_SLEEP_US);
+            g_usleep(EVICT_INTERVAL_US);
             continue;
         }
 
