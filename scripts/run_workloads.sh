@@ -49,7 +49,7 @@ for file in "$directory"/*.bin; do
         declare -g "$key"="$value"
     done
 
-    runfile="./logs/$filename-$(date '+%Y-%m-%d_%H:%M:%S')-run"
+    runfile="./logs/$(date '+%Y-%m-%d_%H:%M:%S')-run"
     # Now you can access the variables
     {
         echo "Chunk Size: $chunk_size"
@@ -64,7 +64,7 @@ for file in "$directory"/*.bin; do
         echo "Low water: $evict_low_water"
         echo "Eviction $eviction_type"
 
-    } > "$runfile"
+    } | tee "$runfile"
 
     echo >> "$runfile"
 
