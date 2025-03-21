@@ -59,7 +59,7 @@ for file in "$directory"/*.bin; do
         echo "Zone Size: $zone_size"
         echo "Iterations: $iterations"
         echo "Number of Zones: $n_zones"
-        echo "Total Chunks: $tchunks"
+        echo "Total Chunks: $chunks"
         echo "High Water: $evict_high"
         echo "Low water: $evict_low"
         echo "Eviction $eviction"
