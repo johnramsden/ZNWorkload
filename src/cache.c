@@ -225,7 +225,7 @@ zn_read_from_disk_whole(struct zn_cache *cache, uint32_t zone_id, void *buffer) 
     size_t bytes = pread(cache->fd, buffer, cache->zone_cap, write_ptr);
     if (bytes != cache->zone_cap) {
         fprintf(stderr, "Couldn't read from fd\n");
-        return nullptr;
+        return NULL;
     }
 
 	return buffer;
