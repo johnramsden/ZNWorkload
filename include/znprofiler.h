@@ -7,7 +7,9 @@
 #include <glib.h>
 
 #define METRICS_BUFFER_SIZE (1u << 12)  // 4096
-#define PROFILING_HEADERS "METRIC,VALUE"
+#define PROFILING_HEADERS "TIMESTAMP,METRIC,VALUE"
+
+#define SINCE_PROFILER_BEGAN(p, now) (TIME_DIFFERENCE_MILLISEC((p->started_ts), (now)))
 
 enum zn_profiler_type {
     ZN_PROFILER_AVG = 0,
@@ -43,6 +45,7 @@ struct zn_profiler {
     struct zn_profiler_metrics metrics[PROFILING_METRICS];
     bool realtime;
     GMutex lock;
+    struct timespec started_ts;
 };
 
 /**
@@ -129,10 +132,12 @@ zn_profiler_set_metric(struct zn_profiler *zp, enum zn_profiler_tag metric, doub
 * Print metric if profiler on and ZN_PROFILER_EVERY=true
 */
 #ifdef ZN_PROFILER_PRINT_EVERY
-#define ZN_PROFILER_PRINTF(zp, ...)    \
+#define ZN_PROFILER_PRINTF(zp, M, ...)    \
     do {                                    \
         if ((zp) != NULL) {                \
-            fprintf(zp->fp, ##__VA_ARGS__);     \
+            struct timespec ts;           \
+            TIME_NOW(&ts);                \
+            fprintf(zp->fp, "%f," M, SINCE_PROFILER_BEGAN(zp, ts), ##__VA_ARGS__);     \
         }                                   \
     } while (0)
 #else

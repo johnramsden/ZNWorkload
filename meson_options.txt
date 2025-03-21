@@ -4,3 +4,9 @@ option('PROFILER_PRINT_EVERY', type : 'boolean', value : true, description : 'Pr
 option('BLOCK_ZONE_CAPACITY', type : 'integer', value : 1129316352, description : 'Set SSD zone size (default is 1077MiB)')
 option('READ_SLEEP_US', type : 'integer', value : 40430, description : 'Read delay in us')
 option('PROFILING_INTERVAL_SEC', type : 'integer', value : 10, description : 'Interval to print metrics on (averaged)')
+option('EVICT_HIGH_THRESH_ZONES', type : 'integer', value : 2, description : 'High water mark for zone eviction')
+option('EVICT_LOW_THRESH_ZONES', type : 'integer', value : 4, description : 'Low water mark for zone eviction')
+option('EVICT_HIGH_THRESH_CHUNKS', type : 'integer', value : 6, description : 'High water mark for chunk eviction')
+option('EVICT_LOW_THRESH_CHUNKS', type : 'integer', value : 12, description : 'Low water mark for chunk eviction')
+option('EVICTION_POLICY', type : 'combo', choices: ['ZN_EVICT_PROMOTE_ZONE', 'ZN_EVICT_CHUNK'], value : 'ZN_EVICT_PROMOTE_ZONE',
+       description : 'Eviction policy')

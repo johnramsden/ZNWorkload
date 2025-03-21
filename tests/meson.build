@@ -6,6 +6,11 @@ test_cflags = [
     '-DBLOCK_ZONE_CAPACITY=' + BLOCK_ZONE_CAPACITY.to_string(),
     '-DZN_READ_SLEEP_US=' + READ_SLEEP_US.to_string(),
     '-DPROFILING_INTERVAL_SEC=' + PROFILING_INTERVAL_SEC.to_string(),
+    '-DEVICTION_POLICY=' + EVICTION_POLICY,
+    '-DEVICT_HIGH_THRESH_ZONES=' + EVICT_HIGH_THRESH_ZONES.to_string(),
+    '-DEVICT_LOW_THRESH_ZONES=' + EVICT_LOW_THRESH_ZONES.to_string(),
+    '-DEVICT_HIGH_THRESH_CHUNKS=' + EVICT_HIGH_THRESH_CHUNKS.to_string(),
+    '-DEVICT_LOW_THRESH_CHUNKS=' + EVICT_LOW_THRESH_CHUNKS.to_string()
 ]
 
 foreach test_name : project_tests

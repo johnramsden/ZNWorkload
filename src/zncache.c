@@ -23,10 +23,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#define EVICTION_POLICY ZN_EVICT_PROMOTE_ZONE
-
-// BLOCK_ZONE_CAPACITY Defined at compile-time
-
 // No evict
 
 uint32_t simple_workload[] = {
@@ -165,6 +161,8 @@ task_function(gpointer data, gpointer user_data) {
             ZN_PROFILER_METRIC_CACHE_HITRATIO,
             hr
         );
+        // Show thread still active
+        ZN_PROFILER_PRINTF(thread_data->cache->profiler, "THREADID_EVERY,%d\n", thread_data->tid);
         dbg_printf("Hitratio: %f\n", hr);
     }
     printf("Task %d finished by thread %p\n", thread_data->tid, (void *) g_thread_self());

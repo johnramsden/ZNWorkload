@@ -60,6 +60,10 @@ for file in "$directory"/*.bin; do
         echo "Iterations: $iterations"
         echo "Number of Zones: $num_zones"
         echo "Total Chunks: $total_chunks"
+        echo "High Water: $evict_high_water"
+        echo "Low water: $evict_low_water"
+        echo "Eviction $eviction_type"
+
     } > "$runfile"
 
     echo >> "$runfile"
@@ -67,7 +71,15 @@ for file in "$directory"/*.bin; do
     # shellcheck disable=SC2024
     echo "Running $runfile"
 
-    meson setup --reconfigure buildDir -Dverify=false -Ddebugging=false -DREAD_SLEEP_US="$latency" >/dev/null
+    meson setup --reconfigure buildDir -Dverify=false \
+                                       -Ddebugging=false \
+                                       -DREAD_SLEEP_US="$latency" \
+                                       -DEVICT_HIGH_THRESH_ZONES="$evict_high_water" \
+                                       -DEVICT_LOW_THRESH_ZONES="$evict_low_water" \
+                                       -DEVICT_HIGH_THRESH_CHUNKS="$evict_high_water" \
+                                       -DEVICT_LOW_THRESH_CHUNKS="$evict_low_water" \
+                                       -DEVICTION_POLICY="$eviction_type" \
+                                        >/dev/null
     meson compile -C buildDir >/dev/null
 
     if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"; then

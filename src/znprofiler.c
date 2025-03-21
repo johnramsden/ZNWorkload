@@ -52,6 +52,8 @@ zn_profiler_init(const char *filename) {
 
     zn_profiler_write(zp, "%s\n", PROFILING_HEADERS);
 
+    TIME_NOW(&zp->started_ts);
+
     for (uint32_t i = 0; i < PROFILING_METRICS; i++) {
         zn_profiler_reset_metric(zp, i);
         zp->metrics[i].type = zn_profiler_metric_types[i];
@@ -70,11 +72,7 @@ void
 zn_profiler_write(struct zn_profiler *zp, const char *format, ...) {
     va_list args;
     va_start(args, format);
-
-    g_mutex_lock(&zp->lock);
     vfprintf(zp->fp, format, args);
-    g_mutex_unlock(&zp->lock);
-
     va_end(args);
 }
 
@@ -96,7 +94,9 @@ zn_profiler_write_all_and_reset(struct zn_profiler *zp) {
                 val = zp->metrics[i].value / zp->metrics[i].count;
             }
         }
-        fprintf(zp->fp, "%s,%f\n", zn_profiler_metric_names[i], val);
+        struct timespec ts;
+        TIME_NOW(&ts);
+        fprintf(zp->fp, "%f,%s,%f\n", SINCE_PROFILER_BEGAN(zp, ts), zn_profiler_metric_names[i], val);
         zn_profiler_reset_metric(zp, i);
         g_mutex_unlock(&zp->lock);
     }
