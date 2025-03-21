@@ -239,7 +239,9 @@ void
 zsm_evict_and_write(struct zone_state_manager *state, uint32_t zone_id, uint32_t count) {
     assert(state);
 
-	g_mutex_lock(&state->state_mutex);
+    // Reset and open the zone.
+
+    g_mutex_lock(&state->state_mutex);
 
     struct zn_zone *zone = &state->state[zone_id];
     assert(zone->state == ZN_ZONE_FULL);
@@ -250,16 +252,16 @@ zsm_evict_and_write(struct zone_state_manager *state, uint32_t zone_id, uint32_t
 
     ret = open_zone(state, zone);
     assert(ret == 0);
-	assert(g_queue_pop_tail(state->active) == zone);
+    assert(g_queue_pop_tail(state->active) == zone);
 
-	zone->state = ZN_ZONE_WRITE_OCCURING;
+    zone->state = ZN_ZONE_WRITE_OCCURING;
     zone->zone_id = zone_id;
     zone->chunk_offset = count - 1; // The last index that is active
     g_queue_clear(zone->invalid);
 
     state->writes_occurring++;
 
-	g_mutex_unlock(&state->state_mutex);
+    g_mutex_unlock(&state->state_mutex);
 }
 
 int
