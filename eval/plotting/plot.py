@@ -47,14 +47,19 @@ def main():
     y_label = args.yaxis if args.yaxis is not None else default_label
     plot_title = args.title if args.title is not None else default_label
 
-    # Create scatter plot.
-    plt.scatter(x_vals, y_vals, label=default_label, s=1)
+    # Create scatter plot
+    plt.figure(figsize=(12, 6))
+    # plt.scatter(x_vals, y_vals, label=default_label, s=1)
+    plt.plot(x_vals, y_vals, label=default_label)
+    # Disable scientific notation on the y-axis
+
+    plt.ticklabel_format(style='plain', axis='y')
     plt.xlabel("Time (minutes)")
     plt.ylabel(y_label)
     plt.title(plot_title)
     plt.legend()
-    plt.savefig(f"{plot_title}.png")
-    plt.show()
+    plt.savefig(f"data/{plot_title}.png")
+    # plt.show()
 
 if __name__ == '__main__':
     main()
