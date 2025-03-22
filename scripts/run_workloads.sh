@@ -79,9 +79,11 @@ for file in "$directory"/*.bin; do
                                        -DEVICT_HIGH_THRESH_CHUNKS="$evict_high" \
                                        -DEVICT_LOW_THRESH_CHUNKS="$evict_low" \
                                        -DEVICTION_POLICY="$eviction" \
+                                       -DPROFILING_INTERVAL_SEC="60" \
                                         >/dev/null
     meson compile -C buildDir >/dev/null
 
+    # shellcheck disable=SC2024
     if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"; then
         echo "Run FAILED!"
         ret=1

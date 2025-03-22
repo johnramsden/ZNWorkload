@@ -12,9 +12,11 @@ char *zn_profiler_metric_names[PROFILING_METRICS] = {
     "READLATENCY",
     "WRITELATENCY",
     "FREEZONES",
-    "WRITETHROUGHPUT",
-    "READTHROUGHPUT",
+    "CACHEHITLATENCY",
+    "CACHEMISSLATENCY",
     "CACHETHROUGHPUT",
+    "CACHEHITTHROUGHPUT",
+    "CACHEMISSTHROUGHPUT",
 };
 
 enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
@@ -24,9 +26,11 @@ enum zn_profiler_type zn_profiler_metric_types[PROFILING_METRICS] = {
     ZN_PROFILER_AVG, // Read lat
     ZN_PROFILER_AVG, // Write lat
     ZN_PROFILER_SET, // Free zones
-    ZN_PROFILER_OVER_TIME, // Write throughput
-    ZN_PROFILER_OVER_TIME, // Read throughput
+    ZN_PROFILER_AVG, // HIT Latency
+    ZN_PROFILER_AVG, // Miss latency
     ZN_PROFILER_OVER_TIME, // Cache throughput
+    ZN_PROFILER_OVER_TIME, // Cache hit throughput
+    ZN_PROFILER_OVER_TIME, // Cache miss throughput
 };
 
 struct zn_profiler *
