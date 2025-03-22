@@ -76,8 +76,8 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
         TIME_NOW(&total_end_time);
         t = TIME_DIFFERENCE_NSEC(total_start_time, total_end_time);
-        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_MISS_LATENCY, t);
-        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_CACHE_MISS_THROUGHPUT, cache->chunk_sz);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_HIT_LATENCY, t);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_CACHE_HIT_THROUGHPUT, cache->chunk_sz);
 
         return data;
     } else { // result.type == RESULT_COND
@@ -134,8 +134,8 @@ zn_cache_get(struct zn_cache *cache, const uint32_t id, unsigned char *random_bu
 
         TIME_NOW(&total_end_time);
         t = TIME_DIFFERENCE_NSEC(total_start_time, total_end_time);
-        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_HIT_LATENCY, t);
-        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_CACHE_HIT_THROUGHPUT, cache->chunk_sz);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_MISS_LATENCY, t);
+        ZN_PROFILER_UPDATE(cache->profiler, ZN_PROFILER_METRIC_CACHE_MISS_THROUGHPUT, cache->chunk_sz);
 
         return data;
 
