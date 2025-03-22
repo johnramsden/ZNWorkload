@@ -27,6 +27,18 @@ def main():
         default=None
     )
     parser.add_argument(
+        "--yunits",
+        help="yaxis (MiB,GiB,B).",
+        choices=['MiB', 'GiB', 'B'],
+        default="B"
+    )
+    parser.add_argument(
+        "--inunits",
+        help="input units (MiB,GiB,B).",
+        choices=['MiB', 'GiB', 'B'],
+        default="B"
+    )
+    parser.add_argument(
         "--type",
         help="plot type.",
         choices=['scatter', 'line'],
@@ -54,8 +66,15 @@ def main():
                 # Convert time from ms to minutes.
                 x_val = float(row[0]) / 60000.0
                 y_val = float(row[2])
-                if y_val == 0.0:
-                    continue
+                if args.inunits == "MiB":
+                    y_val = y_val * (1024*1024)
+                elif args.inunits == "GiB":
+                    y_val = y_val * (1024*1024*1024)
+
+                if args.yunits == "MiB":
+                    y_val = y_val / (1024*1024)
+                elif args.yunits == "GiB":
+                    y_val = y_val / (1024*1024*1024)
             except ValueError as e:
                 print(f"Skipping row {row}: {e}")
                 continue

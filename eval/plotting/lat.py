@@ -27,15 +27,15 @@ def main():
         default=None
     )
     parser.add_argument(
+        "--regression",
+        action="store_true",
+        help="Add regression line to plot."
+    )
+    parser.add_argument(
         "--type",
         help="plot type.",
         choices=['scatter', 'line'],
         default="scatter"
-    )
-    parser.add_argument(
-        "--regression",
-        action="store_true",
-        help="Add regression line to plot."
     )
     args = parser.parse_args()
 
@@ -53,7 +53,7 @@ def main():
             try:
                 # Convert time from ms to minutes.
                 x_val = float(row[0]) / 60000.0
-                y_val = float(row[2])
+                y_val = float(row[2]) / 1_000_000
                 if y_val == 0.0:
                     continue
             except ValueError as e:

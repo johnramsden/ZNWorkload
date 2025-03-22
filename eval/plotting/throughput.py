@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import statistics
-import numpy as np
 
 import csv
 import matplotlib.pyplot as plt
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(
@@ -14,7 +14,7 @@ def main():
     parser.add_argument(
         "--yaxis",
         help="Label for the y-axis. Defaults to the value in the second column.",
-        default=None
+        default="Throughput (MiB/s)",
     )
     parser.add_argument(
         "--title",
@@ -27,15 +27,15 @@ def main():
         default=None
     )
     parser.add_argument(
+        "--regression",
+        action="store_true",
+        help="Add regression line to plot."
+    )
+    parser.add_argument(
         "--type",
         help="plot type.",
         choices=['scatter', 'line'],
         default="scatter"
-    )
-    parser.add_argument(
-        "--regression",
-        action="store_true",
-        help="Add regression line to plot."
     )
     args = parser.parse_args()
 
@@ -53,7 +53,7 @@ def main():
             try:
                 # Convert time from ms to minutes.
                 x_val = float(row[0]) / 60000.0
-                y_val = float(row[2])
+                y_val = float(row[2]) / (1024*1024)
                 if y_val == 0.0:
                     continue
             except ValueError as e:
@@ -70,11 +70,13 @@ def main():
 
     # Create scatter plot
     plt.figure(figsize=(12, 6))
+
     if args.type == "scatter":
         plt.scatter(x_vals, y_vals, label=default_label, s=1)
     else:
         plt.plot(x_vals, y_vals, label=default_label)
 
+    # Disable scientific notation on the y-axis
     if args.regression:
         x = np.array(x_vals)
         y = np.array(y_vals)
@@ -85,7 +87,6 @@ def main():
         # Plot the linear regression line
         plt.plot(x, y_fit, color='red')
 
-    # Disable scientific notation on the y-axis
     plt.ticklabel_format(style='plain', axis='y')
     plt.xlabel("Time (minutes)")
     plt.ylabel(y_label)
