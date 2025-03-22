@@ -3,29 +3,45 @@
 
 set -e
 
-echo "Device: $1"
-echo "Workload Directory: $2"
-echo "Threads: $3"
-echo "Logging to: ./logs"
-
-# Specify the directory (use . for the current directory)
-directory="$2"
-threads="$3"
-
 usage() {
-    printf "Usage: %s DEVICE WORKLOAD_DIR NR_THREADS\n" "$(basename "$0")"
+    printf "Usage: %s [-p] DEVICE WORKLOAD_DIR NR_THREADS\n" "$(basename "$0")"
     exit 1
 }
 
+# Default value for the profile flag
+profile=false
+
+# Parse options. The ":p" means that -p is a valid flag.
+while getopts ":p" opt; do
+    case $opt in
+        p)
+            profile=true
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            usage
+            ;;
+    esac
+done
+
+# Remove the parsed options from the positional parameters
+shift $((OPTIND - 1))
+
+# Check that exactly 3 positional arguments remain
 if [ "$#" -ne 3 ]; then
     echo "Illegal number of parameters $#, should be 3"
     usage
 fi
 
-# Check set
-[ -z $1 ] && usage
-[ -z $2 ] && usage
-[ -z $3 ] && usage
+device="$1"
+directory="$2"
+threads="$3"
+
+echo "Device: $device"
+echo "Workload Directory: $directory"
+echo "Threads: $threads"
+echo "Logging to: ./logs"
+echo "Profile flag: $profile"
 
 ret=0
 
@@ -71,8 +87,10 @@ for file in "$directory"/*.bin; do
     # shellcheck disable=SC2024
     echo "Running $runfile"
 
+    # debugsymbols=true to profile
     meson setup --reconfigure buildDir -Dverify=false \
                                        -Ddebugging=false \
+                                       -Ddebugsymbols="$profile" \
                                        -DREAD_SLEEP_US="$latency" \
                                        -DEVICT_HIGH_THRESH_ZONES="$evict_high" \
                                        -DEVICT_LOW_THRESH_ZONES="$evict_low" \
@@ -84,7 +102,14 @@ for file in "$directory"/*.bin; do
     meson compile -C buildDir >/dev/null
 
     # shellcheck disable=SC2024
-    if ! sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"; then
+    if $profile; then
+        sudo perf record -F 99 -g -o "$runfile.perf" -- ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"
+        ret=$?
+    else
+        sudo ./buildDir/src/zncache "$1" "$chunk_size" "$threads" -w "$file" -i "$iterations" -m "$runfile.profile.csv" >> "$runfile"
+        ret=$?
+    fi
+    if [ $ret -ne 0 ]; then
         echo "Run FAILED!"
         ret=1
     else
