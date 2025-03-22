@@ -79,7 +79,7 @@ for file in "$directory"/*.bin; do
         echo "High Water: $evict_high"
         echo "Low water: $evict_low"
         echo "Eviction $eviction"
-
+        echo "Device $device"
     } | tee "$runfile"
 
     echo >> "$runfile"
