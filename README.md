@@ -25,8 +25,9 @@ meson compile -C buildDir
 
 There are various variables that can be set: (defaults in `meson_options.txt`)
 
-* `DEBUG`: Enables debug output (default true)
-* `VERIFY`: Enables correctness verification (default true)
+* `debugging`: Enables debug output (default true)
+* `debugsymbols`: Enables debug symbols
+* `verify`: Enables correctness verification (default true)
 * `BLOCK_ZONE_CAPACITY`: Sets SSD zone size (default 1077MiB 1129316352)
 * `READ_SLEEP_US`: Read delay to simulate remote data (default 40430us)
 * `PROFILING_INTERVAL_SEC`: Interval to print metrics on (averaged) (default 10)
