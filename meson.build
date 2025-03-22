@@ -16,6 +16,7 @@ zbd_lib = declare_dependency(
 # Read options
 verify_enabled = get_option('verify')
 debug_enabled = get_option('debugging')
+debugsymbols_enabled = get_option('debugsymbols')
 BLOCK_ZONE_CAPACITY = get_option('BLOCK_ZONE_CAPACITY')
 READ_SLEEP_US = get_option('READ_SLEEP_US')
 PROFILER_PRINT_EVERY = get_option('PROFILER_PRINT_EVERY')
@@ -51,6 +52,8 @@ endif
 
 if debug_enabled
     cflags += ['-DDEBUG', '-g']
+elif debugsymbols_enabled
+    cflags += ['-g']
 endif
 
 # Print options for debugging purposes
