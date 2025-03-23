@@ -20,29 +20,29 @@ python bytes.py "${CSV_DIR}/CACHEMISSTHROUGHPUT.csv" \
     --yunits "GiB" \
     --inunits "B" \
     --title "Cache Miss Throughput" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Cache Miss Throughput (GiB/s)"
 
 python bytes.py "${CSV_DIR}/CACHEHITTHROUGHPUT.csv" \
     --yunits "GiB" \
     --inunits "B" \
     --title "Cache Hit Throughput" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Cache Hit Throughput (GiB/s)"
 
 python lat.py "${CSV_DIR}/CACHEHITLATENCY.csv" \
     --title "Cache Hit Latency" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Hit Latency (ms)"
 
 python lat.py "${CSV_DIR}/CACHEMISSLATENCY.csv" \
     --title "Cache Miss Latency" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Miss Latency (ms)"
 
 python lat.py "${CSV_DIR}/GETLATENCY.csv" \
     --title "Cache Get Latency" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Get Latency (ms)"
 
 python lat.py "${CSV_DIR}/GETLATENCY_EVERY.csv" \
@@ -52,7 +52,7 @@ python lat.py "${CSV_DIR}/GETLATENCY_EVERY.csv" \
 
 python lat.py "${CSV_DIR}/READLATENCY.csv" \
     --title "Cache Read Latency" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Read Latency (ms)"
 
 python lat.py "${CSV_DIR}/READLATENCY_EVERY.csv" \
@@ -62,7 +62,7 @@ python lat.py "${CSV_DIR}/READLATENCY_EVERY.csv" \
 
 python lat.py "${CSV_DIR}/WRITELATENCY.csv" \
     --title "Cache Write Latency" \
-    --type "scatter" \
+    --type "line" \
     --yaxis "Write Latency (ms)"
 
 python lat.py "${CSV_DIR}/WRITELATENCY_EVERY.csv" \
