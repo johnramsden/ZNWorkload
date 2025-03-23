@@ -13,73 +13,62 @@ python bytes.py "${CSV_DIR}/CACHETHROUGHPUT.csv" \
     --yunits "GiB" \
     --inunits "B" \
     --title "Cache Throughput" \
-    --type "scatter" \
-    --yaxis "Cache Throughput (GiB/s)" \
-    --regression
+    --type "line" \
+    --yaxis "Cache Throughput (GiB/s)"
 
 python bytes.py "${CSV_DIR}/CACHEMISSTHROUGHPUT.csv" \
     --yunits "GiB" \
     --inunits "B" \
     --title "Cache Miss Throughput" \
     --type "scatter" \
-    --yaxis "Cache Miss Throughput (GiB/s)" \
-    --regression
+    --yaxis "Cache Miss Throughput (GiB/s)"
 
 python bytes.py "${CSV_DIR}/CACHEHITTHROUGHPUT.csv" \
     --yunits "GiB" \
     --inunits "B" \
     --title "Cache Hit Throughput" \
     --type "scatter" \
-    --yaxis "Cache Hit Throughput (GiB/s)" \
-    --regression
+    --yaxis "Cache Hit Throughput (GiB/s)"
 
 python lat.py "${CSV_DIR}/CACHEHITLATENCY.csv" \
     --title "Cache Hit Latency" \
     --type "scatter" \
-    --yaxis "Hit Latency (ms)" \
-    --regression
+    --yaxis "Hit Latency (ms)"
 
 python lat.py "${CSV_DIR}/CACHEMISSLATENCY.csv" \
     --title "Cache Miss Latency" \
     --type "scatter" \
-    --yaxis "Miss Latency (ms)" \
-    --regression
+    --yaxis "Miss Latency (ms)"
 
 python lat.py "${CSV_DIR}/GETLATENCY.csv" \
     --title "Cache Get Latency" \
     --type "scatter" \
-    --yaxis "Get Latency (ms)" \
-    --regression
+    --yaxis "Get Latency (ms)"
 
 python lat.py "${CSV_DIR}/GETLATENCY_EVERY.csv" \
     --title "Cache Get Latency (Individual)" \
     --type "scatter" \
-    --yaxis "Get Latency (ms)" \
-    --regression
+    --yaxis "Get Latency (ms)"
 
 python lat.py "${CSV_DIR}/READLATENCY.csv" \
     --title "Cache Read Latency" \
     --type "scatter" \
-    --yaxis "Read Latency (ms)" \
-    --regression
+    --yaxis "Read Latency (ms)"
 
 python lat.py "${CSV_DIR}/READLATENCY_EVERY.csv" \
     --title "Cache Read Latency (Individual)" \
     --type "scatter" \
-    --yaxis "Read Latency (ms)" \
-    --regression
+    --yaxis "Read Latency (ms)"
 
 python lat.py "${CSV_DIR}/WRITELATENCY.csv" \
     --title "Cache Write Latency" \
     --type "scatter" \
-    --yaxis "Write Latency (ms)" \
-    --regression
+    --yaxis "Write Latency (ms)"
 
 python lat.py "${CSV_DIR}/WRITELATENCY_EVERY.csv" \
     --title "Cache Write Latency (Individual)" \
     --type "scatter" \
-    --yaxis "Write Latency (ms)" \
-    --regression
+    --yaxis "Write Latency (ms)"
 
 python plot.py "${CSV_DIR}/FREEZONES.csv" \
     --title "Free Zones" \
