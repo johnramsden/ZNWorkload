@@ -13,7 +13,7 @@ sudo perf record -F 99 -g -- ./buildDir/src/zncache
 Generate flamegraph:
 
 ```
-perf script > out.perf
+perf script -i INPUT.perf > out.perf
 stackcollapse-perf.pl out.perf > out.folded
 ./flamegraph.pl out.folded > flamegraph.svg
 ```
