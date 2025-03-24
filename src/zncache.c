@@ -23,6 +23,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#define PRINT_THRESH_PERCENT 10
+
 // No evict
 
 uint32_t simple_workload[] = {
@@ -95,6 +97,8 @@ task_function(gpointer data, gpointer user_data) {
 
     printf("Task %d started by thread %p\n", thread_data->tid, (void *) g_thread_self());
 
+    uint32_t thresh_perc = PRINT_THRESH_PERCENT;
+
     // Handles any cache read requests
     while (true) {
         g_mutex_lock(&thread_data->cache->reader.lock);
@@ -111,10 +115,22 @@ task_function(gpointer data, gpointer user_data) {
 		}
 
 		// Increment the query index
-		uint32_t wi = thread_data->cache->reader.workload_index++;
+        bool print = false;
+        uint32_t wi = thread_data->cache->reader.workload_index++;
+        uint32_t percent = (wi * 100) / thread_data->cache->reader.workload_max;
+
+        if (percent >= thresh_perc) {
+            print = true; // Print while unlocked
+        }
 		g_mutex_unlock(&thread_data->cache->reader.lock);
 
-        printf("[%d]: ze_cache_get(workload[%d]=%d)\n", thread_data->tid, wi,
+        if (print) {
+            printf("[%d]:\t(%u%%)\tze_cache_get(workload[%d]=%d)\n", thread_data->tid, percent, wi,
+               thread_data->cache->reader.workload_buffer[wi]);
+            thresh_perc+=PRINT_THRESH_PERCENT;
+        }
+
+        dbg_printf("[%d]: ze_cache_get(workload[%d]=%d)\n", thread_data->tid, wi,
                thread_data->cache->reader.workload_buffer[wi]);
 
 		data_id = thread_data->cache->reader.workload_buffer[wi];
