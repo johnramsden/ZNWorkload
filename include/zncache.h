@@ -31,6 +31,7 @@ struct zn_reader {
     uint64_t workload_index; /**< Index of the workload associated with the reader. */
     uint32_t* workload_buffer;
     uint64_t workload_max;
+    uint64_t thresh_perc; /**< The next percentage to report numbers at */
 };
 
 struct zn_cache_hitratio {
