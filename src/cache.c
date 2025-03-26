@@ -193,6 +193,7 @@ zn_init_cache(struct zn_cache *cache, struct zbd_info *info, size_t chunk_sz, ui
 
     g_mutex_init(&cache->reader.lock);
     cache->reader.workload_index = 0;
+    cache->reader.thresh_perc = 10;
 
     /* VERIFY_ZE_CACHE(cache); */
 }
