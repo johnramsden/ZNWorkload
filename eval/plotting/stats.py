@@ -3,6 +3,7 @@ import argparse
 import csv
 import statistics
 import math
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(
@@ -64,11 +65,16 @@ def main():
     # Compute standard deviation (sample standard deviation).
     std_dev = statistics.stdev(data) if len(data) > 1 else 0.0
 
+    # Compute the 99th percentile (P99) of the data.
+    p99 = np.percentile(data, 99)
+
+    # Print the results.
     print(f"Title: {title}")
     print(f"Total Run Time: {total_runtime_minutes:.2f} minutes")
     print(f"Mean: {mean_val:.4f}")
     print(f"Geometric Mean: {geo_mean:.4f}")
     print(f"Standard Deviation: {std_dev:.4f}")
+    print(f"P99: {p99:.4f}")
 
 if __name__ == '__main__':
     main()
