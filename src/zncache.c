@@ -124,7 +124,7 @@ task_function(gpointer data, gpointer user_data) {
 		g_mutex_unlock(&thread_data->cache->reader.lock);
 
         if (print) {
-            printf("[%d]:\t(%u%%)\tze_cache_get(workload[%d]=%d)\n", thread_data->tid, percent, wi,
+            printf("[%d]:\t(%lu%%)\tze_cache_get(workload[%lu]=%d)\n", thread_data->tid, percent, wi,
 		   thread_data->cache->reader.workload_buffer[wi]);
         }
 
@@ -380,6 +380,9 @@ main(int argc, char **argv) {
 
     uint64_t zone_capacity = 0;
     if (device_type == ZE_BACKEND_ZNS) {
+        if (MAX_ZONES_USED != 0) {
+            info.nr_zones = MAX_ZONES_USED;
+        }
         int ret = zbd_reset_zones(fd, 0, 0);
         if (ret != 0) {
             fprintf(stderr, "Couldn't reset zones\n");
