@@ -3,6 +3,9 @@
 
 set -e
 
+# Get the directory in which this script is located:
+SCRIPT_DIR="$(cd "$(dirname "$0")" || exit 1; pwd)"
+
 usage() {
     printf "Usage: %s [-p] DEVICE WORKLOAD_DIR NR_THREADS\n" "$(basename "$0")"
     exit 1
@@ -98,8 +101,14 @@ for file in "$directory"/*.bin; do
                                        -DEVICT_LOW_THRESH_CHUNKS="$evict_low" \
                                        -DEVICTION_POLICY="$eviction" \
                                        -DPROFILING_INTERVAL_SEC="60" \
+                                       -DMAX_ZONES_USED="$n_zones" \
                                         >/dev/null
     meson compile -C buildDir >/dev/null
+
+    if [ "$device" = "/dev/nvme1n1" ]; then
+        echo "Pre-conditioning SSD"
+        "${SCRIPT_DIR}/precondition-nvme1n1.sh"
+    fi
 
     # shellcheck disable=SC2024
     if $profile; then

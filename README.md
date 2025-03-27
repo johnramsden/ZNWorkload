@@ -38,6 +38,7 @@ There are various variables that can be set: (defaults in `meson_options.txt`)
 * `EVICT_LOW_THRESH_CHUNKS`: Low water mark for chunk eviction
 * `EVICT_INTERVAL_US`: Sleep time between evictions (us) (default 100,000, or 0.1s)
 * `EVICTION_POLICY`: (`ZN_EVICT_PROMOTE_ZONE`, `ZN_EVICT_CHUNK`) Eviction policy, default `ZN_EVICT_PROMOTE_ZONE`
+* `MAX_ZONES_USED`: Set maximum zones to use (default 0 means all)
 
 To modify these:
 
